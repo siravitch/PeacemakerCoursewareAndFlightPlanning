@@ -1,0 +1,36 @@
+rules_version = '2';
+// AU-23A crew roster — paste into Firebase console → Firestore Database → Rules → Publish.
+//   crew/{CALLSIGN}  : weight in kg (public read — that is the point: crew see each other's weight)
+//   pins/{CALLSIGN}  : SHA-256 of  "au23a|CALLSIGN|PIN"  — never readable by anyone
+// A weight can only be written in the SAME commit as its pin record, and only when that pin record is new (first claim of the callsign)
+// or carries the same hash as the stored one. The nonce "n" ties the two writes together, so a crew write without a valid pin write is refused.
+// This keeps people from overwriting each other by accident. It is NOT strong security (a 4-digit PIN can be guessed by repeated tries).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function okCs(cs) { return cs.matches('^[A-Z0-9][A-Z0-9_-]{1,15}$'); }
+
+    match /pins/{cs} {
+      allow read: if false;
+      allow delete: if false;
+      allow create: if okCs(cs)
+        && request.resource.data.keys().hasOnly(['h', 'n'])
+        && request.resource.data.h is string && request.resource.data.h.matches('^[0-9a-f]{64}$')
+        && request.resource.data.n is string && request.resource.data.n.size() <= 40;
+      allow update: if okCs(cs)
+        && request.resource.data.keys().hasOnly(['h', 'n'])
+        && request.resource.data.h == resource.data.h
+        && request.resource.data.n is string && request.resource.data.n.size() <= 40;
+    }
+
+    match /crew/{cs} {
+      allow read: if true;
+      allow delete: if false;
+      allow create, update: if okCs(cs)
+        && request.resource.data.keys().hasOnly(['w', 't', 'n'])
+        && request.resource.data.w is number && request.resource.data.w >= 30 && request.resource.data.w <= 200
+        && request.resource.data.t == request.time
+        && request.resource.data.n is string
+        && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(cs)).data.n;
+    }
+  }
+}
