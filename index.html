@@ -2290,6 +2290,10 @@ svg.prp{width:100%;height:100%;display:block;background:#0a1220}
 .wbx-r.wbx-sub.wbx-crewpick{grid-template-columns:minmax(0,1fr);margin:-3px 0 4px 4px}
 .crew-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:6000;background:#0a2f47;border:1px solid #4da3ff;color:#fff;font-size:13px;padding:8px 14px;border-radius:9px;max-width:92vw}
 .crew-toast.bad{background:#3a1212;border-color:var(--red,#ff5d5d)}
+.crew-fld{display:flex}.crew-fld .crew-in{text-transform:none;font-size:15px;letter-spacing:0}
+.crew-card input[aria-label=PIN],.crew-card input[aria-label="Weight kg"]{font-size:15px;letter-spacing:.04em;text-transform:none}
+.crew-card input[hidden],.crew-fld[hidden],.crew-link[hidden]{display:none}
+.crew-link{border:0;background:transparent;color:var(--cyan,#3dd6f5);cursor:pointer;font-size:12.5px;text-decoration:underline;padding:4px}
 
 </style>
 </head>
@@ -2609,7 +2613,7 @@ const CREW = (function () {
   const meKey = () => 'au23a.crew.me.' + cur;
   const cloud = () => jget('au23a.crew.cache', { t: 0, items: {} });
   const local = () => jget('au23a.crew.local', {});
-  const me = () => (cur ? jget(meKey(), null) : null);
+  const me = () => { if (!cur) return null; const m = jget(meKey(), null); if (m) return m; const c = (cloud().items || {})[cur]; return c ? { w: c.w, t: c.t, sync: c.t } : null; };
   function entries() {
     const m = new Map(), put = (cs, w, t, src) => { const o = m.get(cs); if (!o || (t || 0) >= (o.t || 0)) m.set(cs, { cs, w, t: t || 0, src }); };
     const c = cloud().items || {}; Object.keys(c).forEach(cs => put(cs, c[cs].w, c[cs].t, 'cloud'));
@@ -2626,7 +2630,15 @@ const CREW = (function () {
   async function fetchJson(url, opt) {
     let r; try { r = await fetch(url, opt); } catch (e) { const x = new Error('network'); x.kind = 'network'; throw x; }
     let j = null; try { j = await r.json(); } catch (e) { /* ignore */ }
-    if (!r.ok) { const x = new Error((j && j.error && j.error.message) || 'HTTP ' + r.status); x.kind = r.status === 403 || (j && j.error && j.error.status === 'PERMISSION_DENIED') ? 'denied' : r.status === 404 ? 'nodb' : 'http'; x.status = r.status; throw x; }
+    if (!r.ok) {
+      const e0 = (j && j.error) || {}, m = e0.message || 'HTTP ' + r.status, st = e0.status || '';
+      const x = new Error(m); x.status = r.status;
+      x.kind = r.status === 403 || st === 'PERMISSION_DENIED' ? 'denied'
+        : st === 'ALREADY_EXISTS' || r.status === 409 ? 'exists'
+        : st === 'FAILED_PRECONDITION' ? 'precond'
+        : r.status === 404 || st === 'NOT_FOUND' ? (/no document|document.{0,40}(not found|to update|does not exist)/i.test(m) && !/database \(default\) does not exist/i.test(m) ? 'nodoc' : 'nodb') : 'http';
+      throw x;
+    }
     return j;
   }
   const num = f => (f && (f.doubleValue != null ? Number(f.doubleValue) : f.integerValue != null ? Number(f.integerValue) : NaN));
@@ -2648,9 +2660,16 @@ const CREW = (function () {
       ] })
     });
   }
+  const commit = writes => fetchJson(docs(cfg()) + ':commit?key=' + encodeURIComponent(cfg().apiKey), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ writes }) });
+  const pinDoc = (cs, hash, n, pre) => Object.assign({ update: { name: 'projects/' + cfg().projectId + '/databases/(default)/documents/pins/' + cs, fields: { h: { stringValue: hash }, n: { stringValue: n } } } }, pre ? { currentDocument: { exists: pre === 'exists' } } : {});
+  const crewDoc = (cs, kg, n) => ({ update: { name: 'projects/' + cfg().projectId + '/databases/(default)/documents/crew/' + cs, fields: { w: { doubleValue: kg }, n: { stringValue: n } } }, updateTransforms: [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }] });
+  // sign in = rewrite the pin record with the SAME hash: the rules accept it only when the hash matches; the precondition stops it from ever creating a callsign
+  const fbLogin = (cs, hash) => commit([pinDoc(cs, hash, nonce(), 'exists')]);
+  // register = create the pin record (must not exist yet) and the first weight in one commit
+  const fbRegister = (cs, kg, hash) => { const n = nonce(); return commit([pinDoc(cs, hash, n, 'absent'), crewDoc(cs, kg, n)]); };
   const why = e => e.kind === 'network' ? 'No connection to the shared roster (offline, firewall or ad-blocker) — showing the last list received.'
     : e.kind === 'denied' ? 'Refused by the server rules (wrong PIN, or the callsign belongs to someone else).'
-    : e.kind === 'nodb' ? 'Firestore database not found — create it in the Firebase console (Build → Firestore Database).' : 'Shared roster error: ' + e.message;
+    : e.kind === 'exists' ? 'This callsign is already registered.' : e.kind === 'nodb' ? 'Firestore database not found — create it in the Firebase console (Build → Firestore Database).' : 'Shared roster error: ' + e.message;
   let busy = null, lastTry = 0;
   async function refresh(force) {
     if (!cfg()) { status.state = 'off'; notify(); return false; }
@@ -2674,7 +2693,7 @@ const CREW = (function () {
     const prev = me() || {}; const rec = { w: kg, t: Date.now(), sync: 0 }; rawSet(meKey(), JSON.stringify(rec)); notify();
     if (!cfg()) return { ok: true, local: true, msg: 'Saved on this device (no shared roster configured).' };
     let hash = pin ? await pinHash(cur, pin) : rawGet('au23a.crew.pin.' + cur);
-    if (!hash) return { ok: true, local: true, needPin: true, msg: 'Saved on this device. Enter a 4-digit PIN to share it on the roster.' };
+    if (!hash) return { ok: true, local: true, needPin: true, msg: 'Saved on this device. Enter the PIN (4–8 digits) of this callsign to share it on the roster.' };
     try {
       await fbSave(cur, kg, hash); rawSet('au23a.crew.pin.' + cur, hash); rec.sync = Date.now(); rawSet(meKey(), JSON.stringify(rec));
       await refresh(true); return { ok: true, msg: 'Saved and shared on the roster.' };
@@ -2693,7 +2712,8 @@ const CREW = (function () {
   }
   function delLocal(cs) { const l = local(); delete l[cs]; rawSet('au23a.crew.local', JSON.stringify(l)); notify(); }
 
-  /* ---------- sign-in / sign-out ---------- */
+  /* ---------- sign-in / register / sign-out ---------- */
+  const PIN_RE = /^\d{4,8}$/, pinKey = c => 'au23a.crew.pin.' + c;
   function signIn(raw) {
     const cs = norm(raw); if (!CS_RE.test(cs)) return false;
     const list = jget('au23a.profile.list', []);
@@ -2707,27 +2727,72 @@ const CREW = (function () {
     return true;
   }
   const signOut = () => { rawDel('au23a.profile.cur'); location.reload(); };
+  async function doLogin(cs, pin) {
+    const hash = await pinHash(cs, pin);
+    try { await fbLogin(cs, hash); rawSet(pinKey(cs), hash); return { ok: true }; } catch (e) {
+      if (e.kind === 'nodoc' || e.kind === 'precond') return { ok: false, unreg: true, msg: 'Callsign ' + cs + ' is not registered yet — enter your weight and press Register.' };
+      if (e.kind === 'denied') return { ok: false, msg: 'Wrong PIN for ' + cs + ' (or the server rules are not published yet).' };
+      if (e.kind === 'network') return rawGet(pinKey(cs)) === hash ? { ok: true, offline: true } : { ok: false, msg: 'No connection to the server. Without internet you can only sign in on a device where you already signed in with this callsign and PIN.' };
+      return { ok: false, msg: why(e) };
+    }
+  }
+  async function doRegister(cs, pin, kg) {
+    if (!PIN_RE.test(pin)) return { ok: false, msg: 'PIN: 4–8 digits.' };
+    if (!validKg(kg)) return { ok: false, msg: 'Weight must be between 30 and 200 kg.' };
+    kg = Math.round(kg * 10) / 10; const hash = await pinHash(cs, pin);
+    try { await fbRegister(cs, kg, hash); rawSet(pinKey(cs), hash); rawSet('au23a.crew.me.' + cs, JSON.stringify({ w: kg, t: Date.now(), sync: Date.now() })); return { ok: true }; } catch (e) {
+      if (e.kind === 'exists' || e.kind === 'precond') return { ok: false, taken: true, msg: 'Callsign ' + cs + ' is already registered — sign in with its PIN, or choose another callsign.' };
+      if (e.kind === 'denied') return { ok: false, msg: 'Refused by the server rules (are the Firestore rules published?).' };
+      return { ok: false, msg: why(e) };
+    }
+  }
 
   /* ---------- UI: gate ---------- */
   function gate() {
     if (document.getElementById('crew-gate')) return;
+    const online = !!cfg(); let reg = false, busyG = false;
     const list = jget('au23a.profile.list', []);
+    const stop = i => ['keydown', 'keyup', 'keypress'].forEach(k => i.addEventListener(k, e => { if (k === 'keydown' && e.key === 'Enter' && !go.disabled) go.click(); e.stopPropagation(); }));
     const inp = el('input', { class: 'crew-in', type: 'text', maxlength: '20', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'e.g. VOODOO', 'aria-label': 'Callsign' });
-    const hint = el('div', { class: 'crew-hint' });
-    const go = el('button', { class: 'btn pri', type: 'button', disabled: true }, 'Enter · เข้าใช้งาน');
-    const upd = () => { const c = norm(inp.value); const ok = CS_RE.test(c); go.disabled = !ok; hint.textContent = !inp.value.trim() ? '2–16 letters or digits (A–Z, 0–9, - _). Thai-language callsigns: use the Latin spelling.' : ok ? 'Callsign: ' + c : 'Too short or invalid characters.'; hint.classList.toggle('bad', !!inp.value.trim() && !ok); };
+    const pinIn = el('input', { class: 'crew-in', type: 'password', inputmode: 'numeric', maxlength: '8', autocomplete: 'off', placeholder: 'PIN (4–8 digits)', 'aria-label': 'PIN' });
+    const wIn = el('input', { class: 'crew-in', type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: 'Weight kg (no flight gear)', 'aria-label': 'Weight kg' });
+    const wRow = el('div', { class: 'crew-fld' }, wIn);
+    const hint = el('div', { class: 'crew-hint' }), msg = el('div', { class: 'crew-msg' });
+    const go = el('button', { class: 'btn pri', type: 'button', disabled: true });
+    const tg = el('button', { class: 'crew-link', type: 'button' });
+    const kgv = () => parseFloat(String(wIn.value).replace(',', '.'));
+    const upd = () => {
+      const c = norm(inp.value), okC = CS_RE.test(c), okP = !online || PIN_RE.test(pinIn.value.trim()), okW = !reg || validKg(kgv());
+      pinIn.hidden = !online; wRow.hidden = !reg; pinIn.type = reg ? 'text' : 'password';
+      go.disabled = busyG || !(okC && okP && okW);
+      go.textContent = reg ? 'Register · ลงทะเบียน' : 'Enter · เข้าใช้งาน'; tg.textContent = reg ? 'Already registered? Sign in · มีบัญชีแล้ว' : 'New callsign? Register · ลงทะเบียนใหม่'; tg.hidden = !online;
+      hint.textContent = !inp.value.trim() ? '2–16 letters or digits (A–Z, 0–9, - _). Thai-language callsigns: use the Latin spelling.' : okC ? 'Callsign: ' + c : 'Too short or invalid characters.';
+      hint.classList.toggle('bad', !!inp.value.trim() && !okC);
+    };
     const enter = c => { const r = signIn(c); if (r === true) location.reload(); else if (r === 'nostore') { cur = norm(c); patch(); box.remove(); toast('This browser does not allow saving data — working without a saved profile.', true); mount(); } };
-    inp.addEventListener('input', upd); inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && !go.disabled) enter(inp.value); }); inp.addEventListener('keyup', e => e.stopPropagation()); inp.addEventListener('keypress', e => e.stopPropagation());
-    go.onclick = () => enter(inp.value);
+    go.onclick = async () => {
+      const c = norm(inp.value), p = pinIn.value.trim(); if (go.disabled) return;
+      if (!online) return enter(c);
+      busyG = true; msg.className = 'crew-msg'; msg.textContent = reg ? 'Registering…' : 'Checking…'; upd();
+      const r = reg ? await doRegister(c, p, kgv()) : await doLogin(c, p);
+      busyG = false;
+      if (r.ok) { enter(c); return; }
+      if (r.unreg) reg = true; if (r.taken) reg = false;
+      msg.className = 'crew-msg bad'; msg.textContent = r.msg; upd();
+      if (r.unreg) { try { wIn.focus(); } catch (e) { /* ignore */ } }
+    };
+    tg.onclick = () => { reg = !reg; msg.textContent = ''; upd(); };
+    [inp, pinIn, wIn].forEach(i => { i.addEventListener('input', upd); stop(i); });
+    const pick = c => { inp.value = c; upd(); if (online) { try { pinIn.focus(); } catch (e) { /* ignore */ } } else enter(c); };
     const box = el('div', { id: 'crew-gate', class: 'crew-gate', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Callsign' },
       el('div', { class: 'crew-card' },
         el('h2', null, 'AU-23A · Flight Mission Planner'),
-        el('p', { class: 'crew-sub' }, 'Enter your callsign — your saved data is kept under it, and your weight can be shown to the crew you fly with.'),
-        el('p', { class: 'crew-sub th' }, 'ใส่ callsign ของคุณก่อนเข้าใช้งาน ข้อมูลที่บันทึกไว้จะแยกตาม callsign (ไม่ต้องใช้รหัสผ่าน)'),
-        inp, hint,
-        list.length ? el('div', { class: 'crew-chips' }, el('span', null, 'On this device: '), list.map(c => el('button', { class: 'crew-chip', type: 'button', onclick: () => enter(c) }, c))) : null,
-        el('div', { class: 'crew-row' }, go),
-        el('p', { class: 'crew-fine' }, 'Only callsign and weight are ever shared; everything else stays in this browser. Training aid — not an official document.')));
+        el('p', { class: 'crew-sub' }, online ? 'Sign in with your callsign and PIN — your saved data is kept under it, and your weight is shown to the crew you fly with.' : 'Enter your callsign — your saved data is kept under it.'),
+        el('p', { class: 'crew-sub th' }, online ? 'ใส่ callsign และ PIN เพื่อเข้าใช้งาน ถ้ายังไม่มีให้กด “ลงทะเบียนใหม่” (ต้องใส่ callsign, PIN และน้ำหนัก ครบทั้งสามอย่าง)' : 'ใส่ callsign ของคุณก่อนเข้าใช้งาน ข้อมูลที่บันทึกไว้จะแยกตาม callsign'),
+        inp, hint, pinIn, wRow, msg,
+        list.length ? el('div', { class: 'crew-chips' }, el('span', null, 'On this device: '), list.map(c => el('button', { class: 'crew-chip', type: 'button', onclick: () => pick(c) }, c))) : null,
+        el('div', { class: 'crew-row' }, go, tg),
+        el('p', { class: 'crew-fine' }, online ? 'Only callsign and weight are shared; the PIN is never sent (only a hash of it). Forgot the PIN? Ask the administrator to delete your pin record. Training aid — not an official document.' : 'Only callsign and weight are ever shared; everything else stays in this browser. Training aid — not an official document.')));
     document.body.append(box); upd(); setTimeout(() => { try { inp.focus(); } catch (e) { /* ignore */ } }, 50);
   }
 
@@ -2757,37 +2822,38 @@ const CREW = (function () {
     if (dlg) dlg.remove();
     const mine = me();
     const w = el('input', { class: 'crew-in sm', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: mine && mine.w ? String(mine.w) : '', 'aria-label': 'My weight kg' });
-    const pin = el('input', { class: 'crew-in sm', type: 'password', inputmode: 'numeric', maxlength: '4', autocomplete: 'off', placeholder: 'PIN', 'aria-label': 'PIN', value: '' });
+    const needPin = !!cfg() && !rawGet(pinKey(cur));
+    const pin = !needPin ? null : el('input', { class: 'crew-in sm', type: 'password', inputmode: 'numeric', maxlength: '8', autocomplete: 'off', placeholder: 'PIN', 'aria-label': 'PIN', value: '' });
     const msg = el('div', { class: 'crew-msg' }), st = el('div', { class: 'crew-st' }), body = el('tbody');
     const save = el('button', { class: 'btn pri sm', type: 'button' }, 'Save weight');
     const stl = () => { st.className = 'crew-st ' + status.state; st.textContent = status.state === 'busy' ? 'Updating…' : (status.msg || '') + (status.state === 'ok' && status.t ? ' · ' + ago(status.t) : ''); };
     const redraw = () => { rows(body); stl(); chip.textContent = chipText(); };
     const wasHere = redraw; listeners.push(wasHere);
     save.onclick = async () => {
-      const kg = parseFloat(String(w.value).replace(',', '.')), p = pin.value.trim();
-      if (p && !/^\d{4}$/.test(p)) { msg.className = 'crew-msg bad'; msg.textContent = 'PIN must be 4 digits.'; return; }
+      const kg = parseFloat(String(w.value).replace(',', '.')), p = pin ? pin.value.trim() : '';
+      if (p && !PIN_RE.test(p)) { msg.className = 'crew-msg bad'; msg.textContent = 'PIN must be 4–8 digits.'; return; }
       save.disabled = true; msg.className = 'crew-msg'; msg.textContent = 'Saving…';
-      const r = await saveMine(kg, p); save.disabled = false; msg.className = 'crew-msg ' + (r.ok && !r.needPin ? 'ok' : 'bad'); msg.textContent = r.msg; if (r.ok && !r.needPin) pin.value = '';
+      const r = await saveMine(kg, p); save.disabled = false; msg.className = 'crew-msg ' + (r.ok && !r.needPin ? 'ok' : 'bad'); msg.textContent = r.msg; if (r.ok && !r.needPin && pin) pin.value = '';
     };
     const lc = el('input', { class: 'crew-in sm', type: 'text', maxlength: '20', placeholder: 'Callsign', 'aria-label': 'Add callsign' }), lw = el('input', { class: 'crew-in sm', type: 'text', inputmode: 'decimal', placeholder: 'kg', 'aria-label': 'Add weight kg' });
     const lm = el('div', { class: 'crew-msg' });
     const add = el('button', { class: 'btn sm', type: 'button', onclick: () => { const r = addLocal(lc.value, parseFloat(String(lw.value).replace(',', '.'))); lm.className = 'crew-msg ' + (r.ok ? 'ok' : 'bad'); lm.textContent = r.ok ? 'Added on this device.' : r.msg; if (r.ok) { lc.value = ''; lw.value = ''; } } }, 'Add');
-    [w, pin, lc, lw].forEach(i => { i.addEventListener('keydown', e => e.stopPropagation()); i.addEventListener('keyup', e => e.stopPropagation()); i.addEventListener('keypress', e => e.stopPropagation()); });
-    dlg = el('dialog', { class: 'crew-dlg', 'aria-label': 'Profile' },
-      el('div', { class: 'dh' }, el('h2', null, 'Profile · ' + cur), el('button', { class: 'btn sm', type: 'button', onclick: () => dlg.close() }, 'Close')),
+    [w, pin, lc, lw].filter(Boolean).forEach(i => { i.addEventListener('keydown', e => e.stopPropagation()); i.addEventListener('keyup', e => e.stopPropagation()); i.addEventListener('keypress', e => e.stopPropagation()); });
+    const d = dlg = el('dialog', { class: 'crew-dlg', 'aria-label': 'Profile' },
+      el('div', { class: 'dh' }, el('h2', null, 'Profile · ' + cur), el('button', { class: 'btn sm', type: 'button', onclick: () => d.close() }, 'Close')),
       el('div', { class: 'crew-body' },
         el('h3', null, 'My weight · น้ำหนักของฉัน'),
         el('p', { class: 'crew-fine' }, 'Bare body weight in kg (without flight gear or parachute — the parachute has its own box in Weight & Balance). Shown to the crew you fly with.'),
         el('div', { class: 'crew-row' }, w, el('span', null, 'kg'), pin, save),
-        el('p', { class: 'crew-fine' }, cfg() ? 'PIN: 4 digits. First time on this callsign it becomes your PIN (needed on other devices). It prevents accidental overwrites only — it is not strong security.' : 'No shared roster is configured, so your weight stays on this device.'),
+        el('p', { class: 'crew-fine' }, cfg() ? (needPin ? 'PIN: 4–8 digits — this device does not know it yet; enter the PIN of this callsign (or it becomes the PIN if the callsign is new).' : 'You are signed in with your PIN; saving updates the shared roster.') : 'No shared roster is configured, so your weight stays on this device.'),
         msg,
         el('h3', null, 'Crew roster · รายชื่อลูกเรือ'),
         el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign', 'Weight', 'Updated', ''].map(x => el('th', null, x)))), body),
         el('div', { class: 'crew-row' }, st, el('button', { class: 'btn sm', type: 'button', onclick: () => refresh(true) }, '↻ Refresh')),
         el('details', null, el('summary', null, 'Add a person on this device only (e.g. a passenger)'), el('div', { class: 'crew-row' }, lc, lw, add), lm),
         el('div', { class: 'crew-row end' }, el('button', { class: 'btn sm', type: 'button', onclick: signOut }, 'Change callsign · เปลี่ยน callsign'))));
-    dlg.addEventListener('close', () => { const i = listeners.indexOf(wasHere); if (i >= 0) listeners.splice(i, 1); dlg.remove(); dlg = null; });
-    document.body.append(dlg); redraw(); dlg.showModal(); refresh(false);
+    d.addEventListener('close', () => { const i = listeners.indexOf(wasHere); if (i >= 0) listeners.splice(i, 1); d.remove(); if (dlg === d) dlg = null; });
+    document.body.append(d); redraw(); d.showModal(); refresh(false);
   }
   listeners.push(() => { if (chip) chip.textContent = chipText(); });
 
@@ -2816,7 +2882,7 @@ const CREW = (function () {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   W.addEventListener('storage', e => { if (e.key === 'au23a.crew.cache' || e.key === 'au23a.crew.local') notify(); });
 
-  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, _sha256js: sha256js, _hash: pinHash };
+  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, _sha256js: sha256js, _hash: pinHash };
 }());
 
 ;
