@@ -2712,7 +2712,7 @@ const CREW = (function () {
   function gate() {
     if (document.getElementById('crew-gate')) return;
     const list = jget('au23a.profile.list', []);
-    const inp = el('input', { class: 'crew-in', type: 'text', maxlength: '20', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'e.g. BLUE1', 'aria-label': 'Callsign' });
+    const inp = el('input', { class: 'crew-in', type: 'text', maxlength: '20', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'e.g. VOODOO', 'aria-label': 'Callsign' });
     const hint = el('div', { class: 'crew-hint' });
     const go = el('button', { class: 'btn pri', type: 'button', disabled: true }, 'Enter · เข้าใช้งาน');
     const upd = () => { const c = norm(inp.value); const ok = CS_RE.test(c); go.disabled = !ok; hint.textContent = !inp.value.trim() ? '2–16 letters or digits (A–Z, 0–9, - _). Thai-language callsigns: use the Latin spelling.' : ok ? 'Callsign: ' + c : 'Too short or invalid characters.'; hint.classList.toggle('bad', !!inp.value.trim() && !ok); };
