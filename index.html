@@ -2677,7 +2677,7 @@ const CREW = (function () {
     if (!force && Date.now() - lastTry < 15000) return false;
     lastTry = Date.now(); status.state = 'busy'; notify();
     busy = (async () => {
-      try { const items = await fbList(); rawSet('au23a.crew.cache', JSON.stringify({ t: Date.now(), items })); status.state = 'ok'; status.msg = Object.keys(items).length + ' on the shared roster'; status.t = Date.now(); return true; }
+      try { const items = await fbList(); rawSet('au23a.crew.cache', JSON.stringify({ t: Date.now(), items })); status.state = 'ok'; status.msg = Object.keys(items).length + ' on the shared roster'; status.t = Date.now(); fl.refresh(force); return true; }
       catch (e) { status.state = 'err'; status.msg = why(e); return false; }
       finally { busy = null; notify(); }
     })();
@@ -2796,6 +2796,76 @@ const CREW = (function () {
     document.body.append(box); upd(); setTimeout(() => { try { inp.focus(); } catch (e) { /* ignore */ } }, 50);
   }
 
+  /* ---------- shared aircraft empty-weight list: Firestore fleet/{A/C no.} + config/editors {list:[callsigns]} ---------- */
+  const FC = 'au23a.crew.fleet', FNO = /^[A-Za-z0-9._-]{1,16}$/, FCHUNK = 8;      // 8 records per commit: the rules read 2 documents for each one (Firestore allows 20 per batch)
+  const fcache = () => jget(FC, { t: 0, items: [], editors: [] });
+  const fl = {
+    enabled: () => !!cfg() && mode !== 'off' && !!cur,
+    items: () => (fcache().items || []).slice().sort((a, b) => (a.o - b.o) || (a.no < b.no ? -1 : 1)),
+    editors: () => fcache().editors || [],
+    canEdit: () => fl.enabled() && fl.editors().indexOf(cur) >= 0 && !!rawGet(pinKey(cur)),
+    pending: () => rawGet('au23a.crew.fleet.pending') === '1',
+    validNo: no => FNO.test(String(no)),
+    status: { state: 'idle', msg: '', t: 0 }, listeners: [], onChange: f => fl.listeners.push(f),
+    last: () => { const L = fl.items(); let m = null; L.forEach(r => { if (!m || (r.t || 0) > (m.t || 0)) m = r; }); return m; }
+  };
+  const fnotify = () => fl.listeners.slice().forEach(f => { try { f(); } catch (e) { /* ignore */ } });
+  let fbusy = null;
+  fl.refresh = function (force) {
+    if (!fl.enabled()) return Promise.resolve(false);
+    if (fbusy) return fbusy;
+    fbusy = (async () => {
+      const c = cfg(), out = []; let tok = '', editors = fcache().editors || [];
+      try {
+        for (let p = 0; p < 10; p++) {
+          const j = await fetchJson(docs(c) + '/fleet?pageSize=300&key=' + encodeURIComponent(c.apiKey) + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
+          (j.documents || []).forEach(d => {
+            const no = String(d.name || '').split('/').pop(), f = d.fields || {};
+            if (!FNO.test(no) || (f.x && f.x.booleanValue)) return;
+            const w = num(f.w), arm = num(f.arm), m = f.m ? num(f.m) : null, o = f.o ? num(f.o) : 0;
+            if (w > 0 && arm > 0) out.push({ no, w, arm, m: m > 0 ? m : null, date: f.date ? f.date.stringValue || '' : '', remark: f.remark ? f.remark.stringValue || '' : '', by: f.by ? f.by.stringValue || '' : '', t: f.t && f.t.timestampValue ? Date.parse(f.t.timestampValue) : 0, o });
+          });
+          tok = j.nextPageToken || ''; if (!tok) break;
+        }
+        try { const e = await fetchJson(docs(c) + '/config/editors?key=' + encodeURIComponent(c.apiKey)); const v = e && e.fields && e.fields.list && e.fields.list.arrayValue && e.fields.list.arrayValue.values; editors = (v || []).map(x => String(x.stringValue || '').toUpperCase()).filter(Boolean); } catch (e) { if (e.kind === 'nodoc' || e.kind === 'nodb') editors = []; else throw e; }
+        rawSet(FC, JSON.stringify({ t: Date.now(), items: out, editors }));
+        fl.status = { state: 'ok', msg: '', t: Date.now() };
+      } catch (e) { fl.status = { state: 'err', msg: why(e), t: Date.now() }; }
+      finally { fbusy = null; fnotify(); }
+      return fl.status.state === 'ok';
+    })();
+    return fbusy;
+  };
+  const sameRec = (a, b) => !!a && !!b && a.w === b.w && a.arm === b.arm && (a.m || null) === (b.m || null) && String(a.date || '') === String(b.date || '') && String(a.remark || '') === String(b.remark || '') && a.o === b.o;
+  // Push the differences between `list` (the editor's list, in table order) and the last list read from the server: changed / new records are written, removed ones are marked x:true.
+  fl.sync = async function (list) {
+    if (!fl.canEdit()) return { ok: false, msg: 'Only an editor can change the shared list.' };
+    const cloud = fcache().items || [], byNo = new Map(cloud.map(r => [r.no, r]));
+    const ups = list.map((r, i) => Object.assign({}, r, { o: i })).filter(r => !sameRec(r, byNo.get(r.no))), keep = new Set(list.map(r => r.no)), rem = cloud.filter(r => !keep.has(r.no));
+    if (!ups.length && !rem.length) { rawDel('au23a.crew.fleet.pending'); return { ok: true, n: 0, msg: 'The shared list is already the same.' }; }
+    for (const r of ups) if (!FNO.test(r.no)) return { ok: false, msg: 'A/C number ' + r.no + ': use letters, digits, . _ - only (max 16) to share it.' };
+    const hash = rawGet(pinKey(cur)), c = cfg(), base = 'projects/' + c.projectId + '/databases/(default)/documents/';
+    const wr = (r, x) => {
+      const f = { w: { doubleValue: r.w }, arm: { doubleValue: r.arm }, date: { stringValue: String(r.date || '') }, remark: { stringValue: String(r.remark || '').slice(0, 80) }, by: { stringValue: cur }, o: { doubleValue: r.o || 0 } };
+      if (r.m > 0) f.m = { doubleValue: r.m }; if (x) f.x = { booleanValue: true };
+      return f;
+    };
+    const jobs = ups.map(r => ({ r, x: false })).concat(rem.map(r => ({ r: Object.assign({}, r, { o: r.o || 0 }), x: true })));
+    try {
+      for (let i = 0; i < jobs.length; i += FCHUNK) {
+        const n = nonce(), part = jobs.slice(i, i + FCHUNK);
+        await commit([pinDoc(cur, hash, n, 'exists')].concat(part.map(j => ({ update: { name: base + 'fleet/' + j.r.no, fields: Object.assign(wr(j.r, j.x), { n: { stringValue: n } }) }, updateTransforms: [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }] }))));
+      }
+      rawDel('au23a.crew.fleet.pending');
+      const now = Date.now(); rawSet(FC, JSON.stringify({ t: now, editors: fl.editors(), items: list.map((r, i) => Object.assign({}, r, { o: i, by: cur, t: now })) }));
+      fl.status = { state: 'ok', msg: '', t: now }; fnotify(); fl.refresh(true);
+      return { ok: true, n: ups.length + rem.length, msg: 'Shared: ' + ups.length + ' saved' + (rem.length ? ', ' + rem.length + ' removed' : '') + '.' };
+    } catch (e) {
+      rawSet('au23a.crew.fleet.pending', '1');
+      return { ok: false, msg: (e.kind === 'denied' ? 'Refused by the server — your callsign is not in the editors list, or the PIN no longer matches.' : e.kind === 'network' ? 'No connection — the change is on this device only and will be sent when you are online.' : why(e)) };
+    }
+  };
+
   /* ---------- UI: chip + panel ---------- */
   let chip = null, dlg = null;
   const chipText = () => { const m = me(); return cur ? cur + (m && m.w > 0 ? ' · ' + kgTxt(m.w) : ' · set weight') : 'Guest'; };
@@ -2882,7 +2952,7 @@ const CREW = (function () {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   W.addEventListener('storage', e => { if (e.key === 'au23a.crew.cache' || e.key === 'au23a.crew.local') notify(); });
 
-  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, _sha256js: sha256js, _hash: pinHash };
+  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, _sha256js: sha256js, _hash: pinHash };
 }());
 
 ;
@@ -27383,7 +27453,15 @@ const WBUI = (function () {
   const FLEET0 = [['304', 3634.6, 135.1054, 491054.14, '121065'], ['317', 3693, 135.45, 500217.8, '100767'], ['074', 3764, 136.9033, 515304.02, '200668'], ['077', 3796.32, 136.5315, 518317.39, '030363'], ['080', 3686, 135.6829, 500127.2, '280666'], ['081', 3901, 138.6732, 540964, '100767', 'weight with FLIR'], ['083', 3604, 137.0782, 494029.92, '031066'], ['085', 3767.33, 137.19, 516840, '061167'], ['086', 3704.33, 135.3784, 501486.29, '190167'], ['087', 3644, 136.8959, 498848.65, '100268'], ['088', 3644, 137.3028, 500331.4, '100268'], ['092', 3685, 133.9, 493421.5, '230169']].map(r => ({ no: r[0], w: r[1], arm: r[2], m: r[3], date: r[4], remark: r[5] || '' }));
   let fleet = FLEET0.map(r => Object.assign({}, r));
   const loadFleet = () => { try { const j = JSON.parse(localStorage.getItem(FKEY)); if (Array.isArray(j)) fleet = j.filter(r => r && typeof r === 'object').map(r => ({ no: String(r.no == null ? '' : r.no), w: +r.w || 0, arm: +r.arm || 0, m: r.m == null || r.m === '' ? null : +r.m, date: String(r.date || ''), remark: String(r.remark || '') })); } catch (e) { /* ignore */ } };
-  const saveFleet = () => { try { localStorage.setItem(FKEY, JSON.stringify(fleet)); } catch (e) { /* ignore */ } };
+  /* Shared list (callsign mode with a Firebase config): the records live on the server and everybody reads them; only callsigns in the editors list can change them (CREW.fleet, src/crew.js).
+     Without it (guest / automation / no config) the list stays in this browser exactly as before. */
+  const SH = () => typeof CREW !== 'undefined' && !!CREW.fleet && CREW.fleet.enabled();
+  const shOn = () => SH() && (CREW.fleet.items().length > 0 || CREW.fleet.editors().length > 0);     // dormant until an administrator has set the shared list up (editors list or published records)
+  const shRO = () => shOn() && !CREW.fleet.canEdit();
+  const cpRec = r => ({ no: r.no, w: r.w, arm: r.arm, m: r.m == null ? null : r.m, date: r.date || '', remark: r.remark || '' });
+  const loadShared = () => { if (SH()) { const c = CREW.fleet.items(); if (c.length) fleet = c.map(cpRec); } };
+  const saveLocal = () => { try { localStorage.setItem(FKEY, JSON.stringify(fleet)); } catch (e) { /* ignore */ } };
+  const saveFleet = () => { saveLocal(); if (SH() && CREW.fleet.canEdit()) CREW.fleet.sync(fleet).then(r => { if (R.shDraw) R.shDraw(r); }); };
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   /* W.B. dates are Buddhist Era (พ.ศ.): 65 = 2565 (= 2022 CE). Stored as ddmmyy (two-digit BE year, 25yy) or ddmmyyyy (BE); a four-digit year below 2300 is taken as CE and converted (+543). */
   const dparts = d => { let t = String(d == null ? '' : d).replace(/\D/g, ''); if (t.length === 5) t = '0' + t; if (t.length !== 6 && t.length !== 8) return null; const dd = +t.slice(0, 2), mm = +t.slice(2, 4); let yy = +t.slice(4); if (t.length === 6) yy += 2500; else if (yy < 2300) yy += 543; return dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 ? { dd, mm, yy } : null; };
@@ -27428,7 +27506,7 @@ const WBUI = (function () {
   const setState = f => { const n = dflt(); n.view = S.view; n.units = { wt: S.units.wt, pw: S.units.pw, fuel: S.units.fuel }; n.tu = Object.assign({}, S.tu); n.fu = Object.assign({}, S.fu); n.ftype = S.ftype; n.dens = S.dens; n.ch = JSON.parse(JSON.stringify(S.ch)); n.fp = JSON.parse(JSON.stringify(S.fp)); n.sm = JSON.parse(JSON.stringify(S.sm)); n.fr = JSON.parse(JSON.stringify(S.fr)); f(n); deepSet(S, n); if (S.ftype === 'jp8' && Math.abs(num(S.fuel) - jp4Max()) < .5) S.fuel = fuelMax(); if (!S.basicOwn) S.basicW = basicStd(); };      // W&B presets keep the fuel-planning entries and the view
   /* a clean sheet: nobody aboard, no oil, no fuel, no allowance, no stores — the loading is entered by the user (the T.O. §I figures are one press away on the first preset) */
   const blankLoad = n => { n.crew.forEach(c => { c.on = false; c.w = ''; c.chute = false; c.cw = ''; c.cs = ''; }); n.oilOn = false; n.fuel = 0; n.taxi = 0; n.burn = 0; n.rounds = 0; n.cargo.forEach(c => { c.w = 0; c.rel = false; }); n.equip = []; n.stores.forEach(q => { q.id = 'none'; q.w = 0; q.rel = false; }); n.ac = ''; n.basicOwn = false; n.basicArm = ARM0.basic; return n; };
-  const load = () => { loadFleet(); mcLoad(); let had = false; try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.stores && j.crew) { if (j.frv !== 2) delete j.fr; deepSet(S, j); S.frv = 2; if (j.fpv !== 2) { S.fp.fuelAuto = true; S.fp.own = {}; } S.fpv = 2; had = true; if (j.wbv !== 2) { S.crew.forEach(c => { if (c.w === W.CREW || !(num(c.w) > 0)) c.w = ''; }); S.wbv = 2; } S.crew.forEach((c, i) => { if (i >= 2 && !c.on && c.w === W.CREW) c.w = 0; }); } } catch (e) { /* ignore */ } if (!had) blankLoad(S); if (!UNITS.wt[S.units.wt]) S.units.wt = 'lb'; if (!UNITS.pw[S.units.pw]) S.units.pw = 'kg'; S.tu = Object.assign({ w: 'lb', cg: 'in', vs: 'kt', vlo: 'kt', to: 'ft', ld: 'ft' }, S.tu); if (!UNITS.fuel[S.units.fuel]) S.units.fuel = 'lb'; if (S.ftype !== 'jp8') S.ftype = 'jp4'; if (!(num(S.dens) > .5 && num(S.dens) < 1.2)) S.dens = 0.8001; S.view = 'ac'; };   // the app always opens on Aircraft Empty Weights: the aircraft is chosen first
+  const load = () => { loadFleet(); loadShared(); mcLoad(); let had = false; try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.stores && j.crew) { if (j.frv !== 2) delete j.fr; deepSet(S, j); S.frv = 2; if (j.fpv !== 2) { S.fp.fuelAuto = true; S.fp.own = {}; } S.fpv = 2; had = true; if (j.wbv !== 2) { S.crew.forEach(c => { if (c.w === W.CREW || !(num(c.w) > 0)) c.w = ''; }); S.wbv = 2; } S.crew.forEach((c, i) => { if (i >= 2 && !c.on && c.w === W.CREW) c.w = 0; }); } } catch (e) { /* ignore */ } if (!had) blankLoad(S); if (!UNITS.wt[S.units.wt]) S.units.wt = 'lb'; if (!UNITS.pw[S.units.pw]) S.units.pw = 'kg'; S.tu = Object.assign({ w: 'lb', cg: 'in', vs: 'kt', vlo: 'kt', to: 'ft', ld: 'ft' }, S.tu); if (!UNITS.fuel[S.units.fuel]) S.units.fuel = 'lb'; if (S.ftype !== 'jp8') S.ftype = 'jp4'; if (!(num(S.dens) > .5 && num(S.dens) < 1.2)) S.dens = 0.8001; S.view = 'ac'; };   // the app always opens on Aircraft Empty Weights: the aircraft is chosen first
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } };
   const num = (v, d) => { const x = parseFloat(String(v).replace(/,/g, '')); return Number.isFinite(x) ? x : (d == null ? 0 : d); };
   const f0 = n => fmt(n, 0), f1 = n => fmt(n, 1), f2 = n => fmt(n, 2);
@@ -27729,8 +27807,25 @@ const WBUI = (function () {
     }
     row.push(cur); if (row.some(x => x.trim() !== '')) rows.push(row); return rows;
   };
+  /* the shared list changed on the server: take it, keep the chosen aircraft in step */
+  function applyShared() {
+    if (!SH()) { if (R.shDraw) R.shDraw(); return; }
+    if (CREW.fleet.pending() && CREW.fleet.canEdit()) { CREW.fleet.sync(fleet).then(r => { if (R.shDraw) R.shDraw(r); }); return; }   // an unsent change of an editor is never overwritten
+    const c = CREW.fleet.items(); if (!c.length) { if (R.shDraw) R.shDraw(); if (R.fleetDraw) R.fleetDraw(); return; }
+    const nf = c.map(cpRec); if (JSON.stringify(nf) === JSON.stringify(fleet)) { if (R.shDraw) R.shDraw(); return; }
+    const old = S.ac && acRec(S.ac), follow = !!old && S.basicOwn && Math.abs(num(S.basicW) - old.w) < 0.05 && Math.abs(num(S.basicArm) - old.arm) < 0.0005;
+    fleet = nf; saveLocal();
+    let note = '';
+    if (S.ac && !acRec(S.ac)) { S.ac = ''; S.basicOwn = false; S.basicW = basicStd(); S.basicArm = ARM0.basic; note = 'A/C was removed from the shared list'; }
+    else if (S.ac && follow) { const r = acRec(S.ac); if (Math.abs(r.w - old.w) > 0.05 || Math.abs(r.arm - old.arm) > 0.0005) { R.useAc(S.ac); note = 'A/C ' + S.ac + ' empty weight updated from the shared list'; } }
+    if (R.fleetDraw) R.fleetDraw(); if (R.fillAc) R.fillAc(); if (R.shDraw) R.shDraw(); refreshInputs(); changed();
+    if (note && typeof toast === 'function') { try { toast(note); } catch (e) { /* ignore */ } }
+  }
+  if (typeof CREW !== 'undefined' && CREW.fleet) CREW.fleet.onChange(() => { try { applyShared(); } catch (e) { /* ignore */ } });
   function fleetCard() {
-    let editing = null, manualMo = false;
+    let editing = null, manualMo = false, fleetForm = null;
+    const intro = h('div', { class: 'wbx-note', id: 'wbx-fl-intro' });
+    const introText = 'Add a new aircraft or update an existing one: type the A/C number (an existing number loads its record) or press “Edit” in the table, change the figures and press “Save / update”. ' + (shOn() ? 'The records are shared: every change is saved for everyone.' : 'The record is kept in this browser; “Export CSV” keeps a copy.');
     const msg = h('div', { class: 'wbx-note wbx-fmsg', id: 'wbx-fl-msg', role: 'status', 'aria-live': 'polite' }), mode = h('b', { id: 'wbx-fl-mode' }, 'New aircraft');
     const mk = (id, label, attrs) => h('input', Object.assign({ id, class: 'wbx-in', autocomplete: 'off', spellcheck: 'false', 'aria-label': label }, attrs));
     const dl = h('datalist', { id: 'wbx-f-nos' });
@@ -27754,28 +27849,41 @@ const WBUI = (function () {
     const load = r => { editing = r.no; fNo.value = r.no; fW.value = String(r.w); fArm.value = String(r.arm); manualMo = r.m != null; fMo.value = r.m != null ? String(r.m) : (r.w * r.arm).toFixed(2); fDate.value = slashOf(r.date); fRem.value = r.remark || ''; setMode(); showMo(); };
     fNo.addEventListener('change', () => { const r = editing == null && acRec(fNo.value.trim()); if (r) { load(r); msg.textContent = 'A/C ' + r.no + ' is in the list — its record is loaded; change what is needed and press “Save / update”.'; } });
     const twoStep = (btn, ask, fn) => { const t0 = btn.textContent; btn.addEventListener('click', () => { if (btn._arm) { btn._arm = false; clearTimeout(btn._t); btn.textContent = t0; fn(); } else { btn._arm = true; btn.textContent = ask; btn._t = setTimeout(() => { btn._arm = false; btn.textContent = t0; }, 3500); } }); };
-    const tb = h('tbody'), note = h('div', { class: 'wbx-note', id: 'wbx-fl-note' });
+    const tb = h('tbody'), note = h('div', { class: 'wbx-note', id: 'wbx-fl-note' }), shNote = h('div', { class: 'wbx-note wbx-shnote', id: 'wbx-fl-shared', role: 'status' }), pubBtn = h('button', { type: 'button', class: 'btn pri', id: 'wbx-fl-pub', hidden: '' }, 'Publish this list as the shared list');
     const sum = () => {
       const bad = fleet.filter(r => r.m != null && Math.abs(r.w * r.arm - r.m) > 0.5).map(r => r.no + ' (' + f1(r.w * r.arm - r.m) + ')'), dup = fleet.filter((r, i) => fleet.findIndex(q => q.no === r.no) !== i).map(r => r.no);
       note.textContent = fleet.length + ' aircraft. The loading uses weight × arm.' + (bad.length ? ' Recorded MOMENT differs from weight × arm by more than 0.5 lb·in: ' + bad.join(', ') + '.' : '') + (dup.length ? ' Duplicate aircraft numbers: ' + dup.join(', ') + ' — the first is used.' : '');
     };
+    const shDraw = r => {
+      const on = shOn(), ro = shRO(), L = on ? CREW.fleet.items() : [], last = on ? CREW.fleet.last() : null, ed = on && CREW.fleet.canEdit();
+      shNote.hidden = !on; pubBtn.hidden = !(ed && !L.length);
+      if (on) {
+        shNote.className = 'wbx-note wbx-shnote' + (ro ? ' ro' : '');
+        shNote.textContent = (L.length ? 'SHARED LIST · ' + L.length + ' aircraft · last change ' + (last && last.t ? CREW.ago(last.t) + (last.by ? ' by ' + last.by : '') : '—') : 'Shared list: nothing published yet') + ' — ' + (ed ? 'you are an editor: your changes are saved for everyone.' : 'read-only: only editors can change it' + (CREW.fleet.editors().length ? ' (' + CREW.fleet.editors().join(', ') + ').' : ' (no editors are set on the server yet).'))
+          + (r && r.msg ? ' ' + r.msg : '') + (CREW.fleet.status.state === 'err' ? ' ' + CREW.fleet.status.msg : '') + (CREW.fleet.pending() ? ' A change is waiting to be sent.' : '');
+      }
+      [fleetForm, impBtn, rst, intro].forEach(e => { if (e) e.hidden = e === intro ? false : ro; });
+      if (intro) intro.textContent = ro ? 'These are the weighing records of the unit’s aircraft, kept centrally. Click a row (or press “Use”) to load an aircraft into the loading. Only editors (test pilots) can change them.' : introText;
+    };
+    R.shDraw = shDraw;
     const drop = no => { const ix = fleet.findIndex(r => r.no === no); if (ix < 0) return; fleet.splice(ix, 1); if (S.ac === no) S.ac = ''; if (editing === no) clear(); saveFleet(); draw(); refreshInputs(); changed(); msg.textContent = 'A/C ' + no + ' deleted from the list.'; };
     const mark = () => { [...tb.rows].forEach(tr => tr.classList.toggle('on', !!S.ac && tr.dataset.no === S.ac)); };
     const draw = () => {
       tb.replaceChildren(...fleet.map(r => {
-        const del = h('button', { type: 'button', class: 'btn wbx-mini', 'aria-label': 'Delete aircraft ' + r.no, title: 'Delete this record (press twice)' }, '✕'); twoStep(del, 'Sure?', () => drop(r.no));
+        const del = h('button', { type: 'button', class: 'btn wbx-mini', 'aria-label': 'Delete aircraft ' + r.no, title: 'Delete this record (press twice)' }, '✕'); twoStep(del, 'Sure?', () => drop(r.no)); const ro = shRO();
         const mo = momOf(r);
         return h('tr', { class: 'wbx-flr', 'data-no': r.no, title: 'Click to choose this aircraft', onclick: ev => { if (ev.target.closest('button')) return; R.useAc(r.no); refreshInputs(); changed(); } }, h('td', { class: 'no' }, r.no || '—'), h('td', { class: 'num' }, fmt(r.w, 2)), h('td', { class: 'num' }, fmt(r.arm, 4)), h('td', { class: 'num' }, fmt(mo, 2)), h('td', null, wbDate(r.date)), h('td', { class: 'rm' }, r.remark || ''),
-          h('td', { class: 'act' }, h('button', { type: 'button', class: 'btn wbx-mini', 'aria-label': 'Edit aircraft ' + r.no, title: 'Load this record into the form above', onclick: () => { load(r); msg.textContent = 'A/C ' + r.no + ' loaded into the form.'; fNo.scrollIntoView({ block: 'nearest' }); } }, 'Edit'),
-            h('button', { type: 'button', class: 'btn wbx-mini', 'aria-label': 'Use aircraft ' + r.no, title: 'Use this aircraft in the loading', onclick: () => { useAc(r.no); refreshInputs(); changed(); } }, 'Use'), del));
+          h('td', { class: 'act' }, ro ? null : h('button', { type: 'button', class: 'btn wbx-mini', 'aria-label': 'Edit aircraft ' + r.no, title: 'Load this record into the form above', onclick: () => { load(r); msg.textContent = 'A/C ' + r.no + ' loaded into the form.'; fNo.scrollIntoView({ block: 'nearest' }); } }, 'Edit'),
+            h('button', { type: 'button', class: 'btn wbx-mini', 'aria-label': 'Use aircraft ' + r.no, title: 'Use this aircraft in the loading', onclick: () => { useAc(r.no); refreshInputs(); changed(); } }, 'Use'), ro ? null : del));
       }));
       dl.replaceChildren(...fleet.map(r => h('option', { value: r.no }, f0(r.w) + ' lb')));
-      sum(); mark();
+      sum(); mark(); if (R.shDraw) R.shDraw();
     };
     const useAc = no => R.useAc(no);
     const save1 = () => {
       const no = fNo.value.trim(), w = num(fW.value), moTxt = fMo.value.trim(), m0 = manualMo && moTxt !== '' ? num(moTxt) : null; let arm = num(fArm.value);
       if (!no) { msg.textContent = 'Enter the A/C number.'; fNo.focus(); return; }
+      if (shOn() && !CREW.fleet.validNo(no)) { msg.textContent = 'In the shared list the A/C number may use letters, digits, . _ - only (max 16 characters).'; fNo.focus(); return; }
       if (!(w > 0)) { msg.textContent = 'Enter the A/C empty weight (lb).'; fW.focus(); return; }
       let derived = false; if (!(arm > 0)) { if (m0 != null && m0 > 0) { arm = m0 / w; derived = true; } else { msg.textContent = 'Enter the arm (in.) — or the MOMENT, then the arm is MOMENT ÷ weight.'; fArm.focus(); return; } }
       const dt = normDate(fDate.value); if (fDate.value.trim() && !dt) { msg.textContent = 'The W.B. date is not a valid date — write dd/mm/yyyy in Buddhist Era, e.g. 12/10/2565 (65 = 2565).'; fDate.focus(); return; }
@@ -27817,9 +27925,10 @@ const WBUI = (function () {
     R.fleetDraw = draw; R.fleetImport = importText; regs.push(mark);
     draw(); setMode(); showMo();
     const th = ['A/C no.', 'Empty wt (lb)', 'Arm (in.)', 'MOMENT', 'W.B. date (พ.ศ.)', 'Remark', ''];
+    intro.textContent = introText; pubBtn.onclick = () => { pubBtn.disabled = true; CREW.fleet.sync(fleet).then(r => { pubBtn.disabled = false; shDraw(r); }); };
     return card('Aircraft empty weights — update', 'ปรับปรุงน้ำหนักเปล่าของเครื่องแต่ละลำ', [
-      h('div', { class: 'wbx-note' }, 'Add a new aircraft or update an existing one: type the A/C number (an existing number loads its record) or press “Edit” in the table, change the figures and press “Save / update”. The record is kept in this browser; “Export CSV” keeps a copy.'),
-      h('div', { class: 'wbx-fform', id: 'wbx-fl-form' }, h('div', { class: 'wbx-fmode' }, mode),
+      intro, shNote, h('div', { class: 'wbx-pre' }, pubBtn),
+      fleetForm = h('div', { class: 'wbx-fform', id: 'wbx-fl-form' }, h('div', { class: 'wbx-fmode' }, mode),
         row('wbx-f-no', 'A/C Number', fNo, dl), row('wbx-f-w', 'A/C Empty Weight (lb)', fW), row('wbx-f-arm', 'Arm (In.)', fArm), row('wbx-f-mo', 'MOMENT (lb·in)', fMo), h('div', { class: 'wbx-ff' }, h('span'), moNote),
         row('wbx-f-date', 'W.B. date (พ.ศ.)', h('span', { class: 'wbx-fd' }, fDate, todayBtn)), row('wbx-f-rem', 'Remark', fRem),
         h('label', { class: 'wbx-chk wbx-fuse' }, useChk, h('span', null, 'Use this aircraft in the loading after saving')),

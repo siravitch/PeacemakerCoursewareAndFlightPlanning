@@ -2,6 +2,8 @@ rules_version = '2';
 // AU-23A crew roster — paste into Firebase console → Firestore Database → Rules → Publish.
 //   crew/{CALLSIGN}  : weight in kg (public read — that is the point: crew see each other's weight)
 //   pins/{CALLSIGN}  : SHA-256 of  "au23a|CALLSIGN|PIN"  — never readable by anyone
+//   fleet/{A/C no.}  : the aircraft empty-weight records (weight lb, arm in, W.B. date, remark) — public read; written ONLY by an editor
+//   config/editors   : {list: ["CALLSIGN", ...]} — the callsigns allowed to change the fleet list. YOU create this document in the console (see docs/AIRCRAFT-LIST-SETUP.md); the app cannot write it.
 // A weight can only be written in the SAME commit as its pin record, and only when that pin record is new (first claim of the callsign)
 // or carries the same hash as the stored one. The nonce "n" ties the two writes together, so a crew write without a valid pin write is refused.
 // This keeps people from overwriting each other by accident. It is NOT strong security (a 4-digit PIN can be guessed by repeated tries).
@@ -31,6 +33,32 @@ service cloud.firestore {
         && request.resource.data.t == request.time
         && request.resource.data.n is string
         && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(cs)).data.n;
+    }
+    // ---- shared aircraft empty-weight list ------------------------------------------------------------------
+    match /config/{d} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // A record is written in the same commit as a re-write of the editor's own pins/{callsign} document (same hash = the editor proved the PIN);
+    // the nonce n ties them together. "Deleting" a record = writing x:true (the app hides it). 8 records per commit at most (2 rule reads each, limit 20).
+    match /fleet/{no} {
+      allow read: if true;
+      allow delete: if false;
+      allow create, update: if no.matches('^[A-Za-z0-9._-]{1,16}$')
+        && request.resource.data.keys().hasOnly(['w', 'arm', 'm', 'date', 'remark', 'by', 't', 'n', 'o', 'x'])
+        && request.resource.data.keys().hasAll(['w', 'arm', 'date', 'remark', 'by', 't', 'n', 'o'])
+        && request.resource.data.w is number && request.resource.data.w > 0 && request.resource.data.w <= 20000
+        && request.resource.data.arm is number && request.resource.data.arm > 0 && request.resource.data.arm <= 1000
+        && (!('m' in request.resource.data) || (request.resource.data.m is number && request.resource.data.m > 0))
+        && request.resource.data.date is string && request.resource.data.date.size() <= 8
+        && request.resource.data.remark is string && request.resource.data.remark.size() <= 80
+        && request.resource.data.o is number
+        && (!('x' in request.resource.data) || request.resource.data.x is bool)
+        && request.resource.data.t == request.time
+        && request.resource.data.by is string
+        && request.resource.data.by in get(/databases/$(database)/documents/config/editors).data.list
+        && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(request.resource.data.by)).data.n;
     }
   }
 }
