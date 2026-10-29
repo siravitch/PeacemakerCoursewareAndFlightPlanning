@@ -2886,7 +2886,7 @@ const CREW = (function () {
   const pfx = () => 'p:' + cur + '|';
   const lget = k => rawGet(pfx() + k), lset = (k, v) => rawSet(pfx() + k, v), ldel = k => rawDel(pfx() + k);
   const lkeys = () => { const p = pfx(), out = []; try { for (let i = 0; i < LS.length; i++) { const x = LS.key(i); if (x && x.indexOf(p) === 0) out.push(x.slice(p.length)); } } catch (e) { /* ignore */ } return out; };
-  let ST = null, kc = null, sbusy = null, sagain = false, stTimer = 0, runTimer = 0;
+  let warned = false, ST = null, kc = null, sbusy = null, sagain = false, stTimer = 0, runTimer = 0;
   const st = () => { if (!ST || ST.cs !== cur) { const j = jget(SYK(cur), {}); ST = { cs: cur, b: j.b || {}, d: j.d || {}, big: {} }; } return ST; };
   const stSave = () => { if (ST) rawSet(SYK(ST.cs), JSON.stringify({ b: ST.b, d: ST.d })); };
   const ready = () => { SY.on = !!(cfg() && mode !== 'off' && cur && subtle() && rawGet(KEYK(cur)) && rawGet(pinKey(cur))); if (!cfg()) { SY.state = 'off'; SY.msg = 'No shared server configured — data stays on this device.'; } else if (!SY.on && SY.state !== 'busy') { SY.state = 'needpin'; SY.msg = subtle() ? 'Not turned on for this device yet — enter your PIN once.' : 'This browser cannot encrypt (it needs https) — sync is off.'; } return SY.on; };
@@ -3000,6 +3000,7 @@ const CREW = (function () {
     sbusy = (async () => {
       let res; try { res = await runSync(); } finally { sbusy = null; }
       notify(); const ch = (res.changed || []).filter(k => !QUIET.test(k)); if (ch.length) remoteBar(ch);
+      if (res.err === 'denied' && !warned) { warned = true; toast('Sync is OFF · ' + SY.msg, true); }
       if (sagain) { sagain = false; clearTimeout(runTimer); runTimer = setTimeout(sync, res.ok ? 800 : 30000); }
       return res;
     })();
@@ -3043,11 +3044,13 @@ const CREW = (function () {
 
   /* ---------- UI: chip + panel ---------- */
   let chip = null, dlg = null;
-  const chipText = () => { const m = me(); return cur ? cur + (m && m.w > 0 ? ' · ' + kgTxt(m.w) : ' · set weight') : 'Guest'; };
+  const syncWarn = () => !!(cur && mode !== 'off' && cfg() && (!SY.on || SY.state === 'err'));
+  const chipText = () => { const m = me(); return cur ? cur + (m && m.w > 0 ? ' · ' + kgTxt(m.w) : ' · set weight') + (syncWarn() ? ' ⚠' : '') : 'Guest'; };
+  const chipTitle = () => 'Profile · callsign and crew weights' + (syncWarn() ? ' — SYNC OFF: ' + SY.msg + ' (open for details)' : '');
   function mount() {
     if (chip && document.body.contains(chip)) return;
     chip = el('button', { id: 'crew-chip', class: 'btn sm crew-chip-btn', type: 'button', title: 'Profile · callsign and crew weights' }, chipText());
-    chip.onclick = openPanel;
+    chip.onclick = openPanel; chip.title = chipTitle();
     const slot = document.querySelector('.top-r'); if (slot) slot.insertBefore(chip, slot.firstChild); else { chip.classList.add('float'); document.body.append(chip); }
   }
   function rows(body) {
@@ -3108,7 +3111,7 @@ const CREW = (function () {
     d.addEventListener('close', () => { const i = listeners.indexOf(wasHere); if (i >= 0) listeners.splice(i, 1); d.remove(); if (dlg === d) dlg = null; });
     document.body.append(d); redraw(); d.showModal(); refresh(false);
   }
-  listeners.push(() => { if (chip) chip.textContent = chipText(); });
+  listeners.push(() => { if (chip) { chip.textContent = chipText(); chip.title = chipTitle(); } });
 
   /* ---------- roster picker for other modules (Weight & Balance) ---------- */
   function picker(onPick) {
@@ -3127,7 +3130,7 @@ const CREW = (function () {
   function start() {
     if (mode === 'off') { mount(); return; }
     if (!cur) { gate(); return; }
-    mount();
+    ready(); mount();
     refresh(true);
     if (ready()) sync(); else setTimeout(askBar, 1500);
     let lastS = Date.now();
