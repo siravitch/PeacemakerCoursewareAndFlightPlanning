@@ -3,6 +3,7 @@ rules_version = '2';
 //   crew/{CALLSIGN}  : weight in kg (public read — that is the point: crew see each other's weight)
 //   pins/{CALLSIGN}  : SHA-256 of  "au23a|CALLSIGN|PIN"  — never readable by anyone
 //   fleet/{A/C no.}  : the aircraft empty-weight records (weight lb, arm in, W.B. date, remark) — public read; written ONLY by an editor
+//   ud/{CALLSIGN}/k/*: that callsign's saved data, encrypted with a key made from the PIN (public read, ciphertext only); written only with the PIN proof
 //   config/editors   : {list: ["CALLSIGN", ...]} — the callsigns allowed to change the fleet list. YOU create this document in the console (see docs/AIRCRAFT-LIST-SETUP.md); the app cannot write it.
 // A weight can only be written in the SAME commit as its pin record, and only when that pin record is new (first claim of the callsign)
 // or carries the same hash as the stored one. The nonce "n" ties the two writes together, so a crew write without a valid pin write is refused.
@@ -59,6 +60,27 @@ service cloud.firestore {
         && request.resource.data.by is string
         && request.resource.data.by in get(/databases/$(database)/documents/config/editors).data.list
         && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(request.resource.data.by)).data.n;
+    }
+
+    // ---- each callsign's own saved data, synced across devices (encrypted in the browser with a key made from the PIN: the server only sees ciphertext) ----
+    //   ud/{CALLSIGN}/k/_m           : the index, a JSON string {"key":[version,chunks]}
+    //   ud/{CALLSIGN}/k/c-<key>-<i>  : chunk i of one saved item (base64 ciphertext, up to 600 000 characters)
+    // Anyone can READ it (that is how another device gets it) but cannot decrypt without the PIN; writing needs the same pins re-write + nonce as above.
+    // 8 writes per commit at most (1 rule read each + pins), so a commit is far below the limit of 20.
+    match /ud/{cs}/k/{id} {
+      allow read: if okCs(cs);
+      allow delete: if false;
+      allow create, update: if okCs(cs)
+        && request.resource.data.t == request.time
+        && request.resource.data.n is string && request.resource.data.n.size() <= 40
+        && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(cs)).data.n
+        && ((id == '_m'
+              && request.resource.data.keys().hasOnly(['m', 't', 'n'])
+              && request.resource.data.m is string && request.resource.data.m.size() <= 20000)
+            || (id.matches('^c-[A-Za-z0-9._-]{1,72}-[0-5]$')
+              && request.resource.data.keys().hasOnly(['c', 'v', 't', 'n'])
+              && request.resource.data.c is string && request.resource.data.c.size() <= 650000
+              && request.resource.data.v is number));
     }
   }
 }

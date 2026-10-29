@@ -2294,6 +2294,9 @@ svg.prp{width:100%;height:100%;display:block;background:#0a1220}
 .crew-card input[aria-label=PIN],.crew-card input[aria-label="Weight kg"]{font-size:15px;letter-spacing:.04em;text-transform:none}
 .crew-card input[hidden],.crew-fld[hidden],.crew-link[hidden]{display:none}
 .crew-link{border:0;background:transparent;color:var(--cyan,#3dd6f5);cursor:pointer;font-size:12.5px;text-decoration:underline;padding:4px}
+.crew-syncbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;bottom:64px}
+.crew-syncbar .crew-in{width:90px}
+.crew-fine.th{margin-top:2px}
 
 </style>
 </head>
@@ -2540,7 +2543,7 @@ window.CREW_FB = window.CREW_FB || { projectId: 'au-23a-flight-planning', apiKey
 /* ==========================================================================
    AU-23A · CREW PROFILE  (callsign gate · data kept per callsign · shared weight roster)
    - Callsign is asked once (no password). Everything the app saves in the browser is kept under that callsign, so each person finds "their" data again.
-   - Only callsign + weight (kg, bare body weight) are shared: Firebase Firestore through its REST API (no SDK). Empty CREW_FB = roster on this device only.
+   - Callsign + weight (kg, bare body weight) are shared in the clear; everything else is synced only encrypted (see 'cross-device sync'): Firebase Firestore through its REST API (no SDK). Empty CREW_FB = roster on this device only.
    - Writing a weight needs a 4-digit PIN (first use sets it) — it stops accidental overwrites, it is NOT strong security.  Rules: docs/firestore.rules.
    - Automation (navigator.webdriver) and ?gate=0 skip the gate and keep the old, un-namespaced storage; ?gate=1 forces it.
    ========================================================================== */
@@ -2566,8 +2569,8 @@ const CREW = (function () {
   function patch() {
     if (!SP || !LS || SP.__crewPatched) return;
     SP.getItem = function (k) { return this === LS ? g0.call(this, keyOf(String(k))) : g0.call(this, k); };
-    SP.setItem = function (k, v) { return this === LS ? s0.call(this, keyOf(String(k)), v) : s0.call(this, k, v); };
-    SP.removeItem = function (k) { return this === LS ? r0.call(this, keyOf(String(k))) : r0.call(this, k); };
+    SP.setItem = function (k, v) { if (this !== LS) return s0.call(this, k, v); const r = s0.call(this, keyOf(String(k)), v); if (cur && !SHARED.test(String(k))) touch(String(k)); return r; };
+    SP.removeItem = function (k) { if (this !== LS) return r0.call(this, k); const r = r0.call(this, keyOf(String(k))); if (cur && !SHARED.test(String(k))) touch(String(k)); return r; };
     SP.__crewPatched = true;
   }
   if (cur) patch();
@@ -2695,7 +2698,7 @@ const CREW = (function () {
     let hash = pin ? await pinHash(cur, pin) : rawGet('au23a.crew.pin.' + cur);
     if (!hash) return { ok: true, local: true, needPin: true, msg: 'Saved on this device. Enter the PIN (4–8 digits) of this callsign to share it on the roster.' };
     try {
-      await fbSave(cur, kg, hash); rawSet('au23a.crew.pin.' + cur, hash); rec.sync = Date.now(); rawSet(meKey(), JSON.stringify(rec));
+      await fbSave(cur, kg, hash); rawSet('au23a.crew.pin.' + cur, hash); if (pin) { await storeKey(cur, pin); ready(); sync(); } rec.sync = Date.now(); rawSet(meKey(), JSON.stringify(rec));
       await refresh(true); return { ok: true, msg: 'Saved and shared on the roster.' };
     } catch (e) {
       if (e.kind === 'denied' && !pin) rawDel('au23a.crew.pin.' + cur);
@@ -2729,10 +2732,10 @@ const CREW = (function () {
   const signOut = () => { rawDel('au23a.profile.cur'); location.reload(); };
   async function doLogin(cs, pin) {
     const hash = await pinHash(cs, pin);
-    try { await fbLogin(cs, hash); rawSet(pinKey(cs), hash); return { ok: true }; } catch (e) {
+    try { await fbLogin(cs, hash); rawSet(pinKey(cs), hash); await storeKey(cs, pin); return { ok: true }; } catch (e) {
       if (e.kind === 'nodoc' || e.kind === 'precond') return { ok: false, unreg: true, msg: 'Callsign ' + cs + ' is not registered yet — enter your weight and press Register.' };
       if (e.kind === 'denied') return { ok: false, msg: 'Wrong PIN for ' + cs + ' (or the server rules are not published yet).' };
-      if (e.kind === 'network') return rawGet(pinKey(cs)) === hash ? { ok: true, offline: true } : { ok: false, msg: 'No connection to the server. Without internet you can only sign in on a device where you already signed in with this callsign and PIN.' };
+      if (e.kind === 'network') return rawGet(pinKey(cs)) === hash ? (await storeKey(cs, pin), { ok: true, offline: true }) : { ok: false, msg: 'No connection to the server. Without internet you can only sign in on a device where you already signed in with this callsign and PIN.' };
       return { ok: false, msg: why(e) };
     }
   }
@@ -2740,7 +2743,7 @@ const CREW = (function () {
     if (!PIN_RE.test(pin)) return { ok: false, msg: 'PIN: 4–8 digits.' };
     if (!validKg(kg)) return { ok: false, msg: 'Weight must be between 30 and 200 kg.' };
     kg = Math.round(kg * 10) / 10; const hash = await pinHash(cs, pin);
-    try { await fbRegister(cs, kg, hash); rawSet(pinKey(cs), hash); rawSet('au23a.crew.me.' + cs, JSON.stringify({ w: kg, t: Date.now(), sync: Date.now() })); return { ok: true }; } catch (e) {
+    try { await fbRegister(cs, kg, hash); rawSet(pinKey(cs), hash); await storeKey(cs, pin); rawSet('au23a.crew.me.' + cs, JSON.stringify({ w: kg, t: Date.now(), sync: Date.now() })); return { ok: true }; } catch (e) {
       if (e.kind === 'exists' || e.kind === 'precond') return { ok: false, taken: true, msg: 'Callsign ' + cs + ' is already registered — sign in with its PIN, or choose another callsign.' };
       if (e.kind === 'denied') return { ok: false, msg: 'Refused by the server rules (are the Firestore rules published?).' };
       return { ok: false, msg: why(e) };
@@ -2769,7 +2772,7 @@ const CREW = (function () {
       hint.textContent = !inp.value.trim() ? '2–16 letters or digits (A–Z, 0–9, - _). Thai-language callsigns: use the Latin spelling.' : okC ? 'Callsign: ' + c : 'Too short or invalid characters.';
       hint.classList.toggle('bad', !!inp.value.trim() && !okC);
     };
-    const enter = c => { const r = signIn(c); if (r === true) location.reload(); else if (r === 'nostore') { cur = norm(c); patch(); box.remove(); toast('This browser does not allow saving data — working without a saved profile.', true); mount(); } };
+    const enter = async c => { const r = signIn(c); if (r === true) { if (online && rawGet(KEYK(norm(c)))) { cur = norm(c); busyG = true; msg.className = 'crew-msg'; msg.textContent = 'Loading your saved data… · กำลังโหลดข้อมูลของคุณ'; upd(); try { await Promise.race([sync(), new Promise(r2 => setTimeout(r2, 25000))]); } catch (e) { /* go on */ } } location.reload(); } else if (r === 'nostore') { cur = norm(c); patch(); box.remove(); toast('This browser does not allow saving data — working without a saved profile.', true); mount(); } };
     go.onclick = async () => {
       const c = norm(inp.value), p = pinIn.value.trim(); if (go.disabled) return;
       if (!online) return enter(c);
@@ -2792,7 +2795,7 @@ const CREW = (function () {
         inp, hint, pinIn, wRow, msg,
         list.length ? el('div', { class: 'crew-chips' }, el('span', null, 'On this device: '), list.map(c => el('button', { class: 'crew-chip', type: 'button', onclick: () => pick(c) }, c))) : null,
         el('div', { class: 'crew-row' }, go, tg),
-        el('p', { class: 'crew-fine' }, online ? 'Only callsign and weight are shared; the PIN is never sent (only a hash of it). Forgot the PIN? Ask the administrator to delete your pin record. Training aid — not an official document.' : 'Only callsign and weight are ever shared; everything else stays in this browser. Training aid — not an official document.')));
+        el('p', { class: 'crew-fine' }, online ? 'Your weight is shown to the crew. Your saved data (courseware progress, missions, W&B…) is stored on the server encrypted with a key made from your PIN, so it follows you to other devices. The PIN is never sent (only a hash of it). Forgot the PIN? Ask the administrator to delete your pin record. Training aid — not an official document.' : 'Only callsign and weight are ever shared; everything else stays in this browser. Training aid — not an official document.')));
     document.body.append(box); upd(); setTimeout(() => { try { inp.focus(); } catch (e) { /* ignore */ } }, 50);
   }
 
@@ -2866,6 +2869,178 @@ const CREW = (function () {
     }
   };
 
+  /* ---------- cross-device sync ----------
+     Everything the app saves under this callsign (courseware progress, missions, KML, W&B, IFR, map settings, …) is kept, encrypted, in Firestore  ud/{CALLSIGN}/k/*  so the same callsign + PIN shows it on any device.
+     - The key is made from the PIN (PBKDF2 → AES-GCM, in the browser); the server only ever holds ciphertext. The PIN itself is never sent and never stored; a derived key is kept on each device you signed in on.
+     - ud/{CS}/k/_m is the index  {key: [version, chunks]}; each value is gzip → AES-GCM → base64, cut in ≤ 600 000-char chunks  c-<key>-<i>.  A write is the same commit as a re-write of pins/{CS} (PIN proof, same trick as the roster).
+     - Per key: only this device changed → send; only another device changed → take it; both → the later write wins (the loser is kept in au23a.crew.bak.<CS>); courseware progress is merged instead (nothing done is lost). */
+  const SYK = c => 'au23a.crew.sync.' + c, KEYK = c => 'au23a.crew.k.' + c, BAKK = c => 'au23a.crew.bak.' + c;
+  const QUIET = /^mission-planner\.(tab|base)$/, MERGE = /^mission-planner\.cw$/, PROG = ['checks', 'known', 'best', 'seen', 'tests', 'exam', 'survey'];
+  let CH = 600000, MAXCH = 6; const KDF_IT = 150000;
+  const SY = { on: false, state: cfg() ? 'idle' : 'off', msg: '', t: 0, n: 0, skipped: [] };
+  const u8 = s => new TextEncoder().encode(s);
+  const b64 = u => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+  const unb64 = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  const subtle = () => (W.crypto && W.crypto.subtle) || null;
+  const sig = s => { if (s == null) return ''; let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return s.length + ':' + (h >>> 0).toString(36); };
+  const pfx = () => 'p:' + cur + '|';
+  const lget = k => rawGet(pfx() + k), lset = (k, v) => rawSet(pfx() + k, v), ldel = k => rawDel(pfx() + k);
+  const lkeys = () => { const p = pfx(), out = []; try { for (let i = 0; i < LS.length; i++) { const x = LS.key(i); if (x && x.indexOf(p) === 0) out.push(x.slice(p.length)); } } catch (e) { /* ignore */ } return out; };
+  let ST = null, kc = null, sbusy = null, sagain = false, stTimer = 0, runTimer = 0;
+  const st = () => { if (!ST || ST.cs !== cur) { const j = jget(SYK(cur), {}); ST = { cs: cur, b: j.b || {}, d: j.d || {}, big: {} }; } return ST; };
+  const stSave = () => { if (ST) rawSet(SYK(ST.cs), JSON.stringify({ b: ST.b, d: ST.d })); };
+  const ready = () => { SY.on = !!(cfg() && mode !== 'off' && cur && subtle() && rawGet(KEYK(cur)) && rawGet(pinKey(cur))); if (!cfg()) { SY.state = 'off'; SY.msg = 'No shared server configured — data stays on this device.'; } else if (!SY.on && SY.state !== 'busy') { SY.state = 'needpin'; SY.msg = subtle() ? 'Not turned on for this device yet — enter your PIN once.' : 'This browser cannot encrypt (it needs https) — sync is off.'; } return SY.on; };
+  async function deriveKey(cs, pin) {
+    const s = subtle(); if (!s) return null;
+    try { const b = await s.importKey('raw', u8(pin), 'PBKDF2', false, ['deriveBits']); return b64(new Uint8Array(await s.deriveBits({ name: 'PBKDF2', salt: u8('au23a-sync|' + cs), iterations: KDF_IT, hash: 'SHA-256' }, b, 256))); } catch (e) { return null; }
+  }
+  async function storeKey(cs, pin) { const k = await deriveKey(cs, pin); if (k) { rawSet(KEYK(cs), k); kc = null; } return !!k; }
+  async function aes() { const raw = rawGet(KEYK(cur)); if (!raw) throw new Error('nokey'); if (kc && kc.raw === raw) return kc.k; const k = await subtle().importKey('raw', unb64(raw), 'AES-GCM', false, ['encrypt', 'decrypt']); kc = { raw, k }; return k; }
+  async function gz(u, dec) { const C = dec ? W.DecompressionStream : W.CompressionStream; if (!C) return null; return new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new C('gzip'))).arrayBuffer()); }
+  const aad = (k, v) => u8(cur + '|' + k + '|' + v);
+  async function sealTxt(k, v, text) {
+    const key = await aes(); let raw = u8(text), f = 0; let z = null; try { z = await gz(raw, false); } catch (e) { /* no compression */ }
+    if (z && z.length < raw.length) { raw = z; f = 1; }
+    const iv = W.crypto.getRandomValues(new Uint8Array(12)), ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: aad(k, v) }, key, raw));
+    const out = new Uint8Array(13 + ct.length); out[0] = f; out.set(iv, 1); out.set(ct, 13); return b64(out);
+  }
+  async function openTxt(k, v, str) {
+    const key = await aes(), u = unb64(str), pt = new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv: u.subarray(1, 13), additionalData: aad(k, v) }, key, u.subarray(13)));
+    const raw = u[0] === 1 ? await gz(pt, true) : pt; if (!raw) throw new Error('gunzip'); return new TextDecoder().decode(raw);
+  }
+  const kq = () => '?key=' + encodeURIComponent(cfg().apiKey);
+  async function getDoc(path) { try { return await fetchJson(docs(cfg()) + '/' + path + kq()); } catch (e) { if (e.status === 404 && !/database \(default\) does not exist/i.test(e.message)) return null; throw e; } }
+  const idOf = (k, i) => 'c-' + String(k).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 72) + '-' + i;
+  async function getMeta() {
+    const d = await getDoc('ud/' + cur + '/k/_m'); let m = {};
+    if (d && d.fields && d.fields.m) { try { m = JSON.parse(d.fields.m.stringValue) || {}; } catch (e) { m = {}; } }
+    return { m, ut: d ? d.updateTime || null : null };
+  }
+  async function readKey(k, ent) {
+    const parts = await Promise.all(Array.from({ length: ent[1] }, (_, i) => getDoc('ud/' + cur + '/k/' + idOf(k, i)))); let s = '';
+    for (const d of parts) { if (!d || !d.fields || !d.fields.c || num(d.fields.v) !== ent[0]) { const x = new Error('Another device is writing this item — will retry.'); x.kind = 'soft'; throw x; } s += d.fields.c.stringValue; }
+    return openTxt(k, ent[0], s);
+  }
+  async function writeKey(k, text, v, meta) {
+    const hash = rawGet(pinKey(cur)), base = 'projects/' + cfg().projectId + '/databases/(default)/documents/', T = [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }];
+    let cipher = '', N = 0;
+    if (text != null) { cipher = await sealTxt(k, v, text); N = Math.ceil(cipher.length / CH); if (N > MAXCH) { const x = new Error('too large'); x.kind = 'big'; throw x; } }
+    for (let a = 0; ; a++) {
+      const m = Object.assign({}, meta.m); m[k] = [v, N]; const n = nonce(), w = [pinDoc(cur, hash, n, 'exists')];
+      for (let i = 0; i < N; i++) w.push({ update: { name: base + 'ud/' + cur + '/k/' + idOf(k, i), fields: { c: { stringValue: cipher.slice(i * CH, (i + 1) * CH) }, v: { doubleValue: v }, n: { stringValue: n } } }, updateTransforms: T });
+      w.push({ update: { name: base + 'ud/' + cur + '/k/_m', fields: { m: { stringValue: JSON.stringify(m) }, n: { stringValue: n } } }, updateTransforms: T, currentDocument: meta.ut ? { updateTime: meta.ut } : { exists: false } });
+      try {
+        const r = await commit(w), wr = r && r.writeResults && r.writeResults[w.length - 1]; meta.m = m; meta.ut = wr && wr.updateTime || null;
+        if (!meta.ut) { const f = await getMeta(); meta.ut = f.ut; }
+        return;
+      } catch (e) {
+        if ((e.kind === 'precond' || e.kind === 'exists') && a < 3) {            // the index changed under us: re-read it; if THIS item changed too, leave it to the next round
+          const f = await getMeta(); if (JSON.stringify(f.m[k] || null) !== JSON.stringify(meta.m[k] || null)) { const x = new Error('raced'); x.kind = 'soft'; throw x; }
+          meta.m = f.m; meta.ut = f.ut; continue;
+        }
+        throw e;
+      }
+    }
+  }
+  const isObj = x => !!x && typeof x === 'object' && !Array.isArray(x);
+  function pmerge(a, b, aNew) {       // progress: nothing done is lost
+    if (isObj(a) && isObj(b)) { const o = {}; new Set(Object.keys(a).concat(Object.keys(b))).forEach(k => { o[k] = k in a ? (k in b ? pmerge(a[k], b[k], aNew) : a[k]) : b[k]; }); return o; }
+    if (typeof a === 'number' && typeof b === 'number') return Math.max(a, b);
+    if (typeof a === 'boolean' && typeof b === 'boolean') return a || b;
+    return aNew ? a : b;
+  }
+  function mergeCw(la, rb, localNewer) {
+    let a, b; try { a = JSON.parse(la); b = JSON.parse(rb); } catch (e) { return localNewer ? la : rb; }
+    if (!isObj(a) || !isObj(b)) return localNewer ? la : rb;
+    const o = {}; new Set(Object.keys(a).concat(Object.keys(b))).forEach(k => { o[k] = !(k in b) ? a[k] : !(k in a) ? b[k] : PROG.indexOf(k) >= 0 ? pmerge(a[k], b[k], localNewer) : localNewer ? a[k] : b[k]; });
+    return JSON.stringify(o);
+  }
+  function backup(k, text) { if (text == null || text.length > 1500000) return; const j = jget(BAKK(cur), {}); j[k] = { t: Date.now(), v: text }; const ks = Object.keys(j).sort((x, y) => j[y].t - j[x].t).slice(0, 4), o = {}; ks.forEach(x => { o[x] = j[x]; }); rawSet(BAKK(cur), JSON.stringify(o)); }
+  const swhy = e => e.kind === 'network' ? 'Offline — your changes are kept here and will be sent when you are back online.'
+    : e.kind === 'denied' ? 'The server refused the sync (rules for saved data not published yet, or the PIN no longer matches). Open the profile and enter the PIN again.'
+    : e.kind === 'nodb' ? 'Firestore database not found — create it in the Firebase console.' : e.kind === 'soft' ? e.message : 'Sync error: ' + e.message;
+  async function runSync() {
+    SY.state = 'busy'; notify();
+    const S = st(), changed = [], errs = []; let nUp = 0, nDown = 0;
+    try {
+      const meta = await getMeta(); SY.n = Object.keys(meta.m).length;
+      const keys = new Set(Object.keys(meta.m).concat(lkeys()));
+      for (const k of keys) {
+        if (!k || SHARED.test(k) || k.indexOf('p:') === 0) continue;
+        try {
+          const r = meta.m[k], b = S.b[k], L = lget(k), sg = sig(L);
+          const dirty = sg !== (b ? b.h : '') || (!r && L != null), rch = !!r && (!b || r[0] !== b.v);
+          const nextV = Math.max(Date.now(), (r ? r[0] : 0) + 1, (b ? b.v : 0) + 1);
+          const take = async text => { if (text == null) ldel(k); else if (!lset(k, text)) throw new Error('This browser has no room left to store “' + k + '”.'); S.b[k] = { v: r[0], h: sig(text) }; delete S.d[k]; nDown++; changed.push(k); };
+          const give = async text => {
+            if (text != null && S.big[k] === sig(text)) return;
+            try { await writeKey(k, text, nextV, meta); } catch (e) { if (e.kind === 'big') { S.big[k] = sig(text); SY.skipped.push(k); return; } throw e; }
+            S.b[k] = { v: nextV, h: sig(text) }; if (sig(lget(k)) === sig(text)) delete S.d[k]; nUp++;
+          };
+          if (!dirty && rch) { await take(r[1] ? await readKey(k, r) : null); }
+          else if (dirty && !rch) { await give(L); }
+          else if (dirty && rch) {
+            const rt = r[1] ? await readKey(k, r) : null, localNew = (S.d[k] || 0) > r[0];
+            if (MERGE.test(k) && L != null && rt != null) {
+              const mg = mergeCw(L, rt, localNew); if (mg !== L) { lset(k, mg); changed.push(k); }
+              if (mg === rt) { S.b[k] = { v: r[0], h: sig(rt) }; delete S.d[k]; } else await give(mg);
+            } else if (localNew) await give(L);
+            else { backup(k, L); await take(rt); }
+          }
+        } catch (e) { if (e.kind === 'network' || e.kind === 'denied' || e.kind === 'nodb') throw e; errs.push(k + ': ' + (e.message || e)); }
+      }
+      stSave(); SY.state = errs.length ? 'err' : 'ok'; SY.t = Date.now(); SY.msg = errs.length ? 'Some items could not be synced (' + errs[0] + ') — will retry.' : (nUp || nDown ? (nUp ? nUp + ' sent' : '') + (nUp && nDown ? ' · ' : '') + (nDown ? nDown + ' received' : '') : 'Up to date') + (SY.skipped.length ? ' · too large to sync: ' + SY.skipped.join(', ') : '');
+      if (errs.length) sagain = true;
+      return { ok: !errs.length, up: nUp, down: nDown, changed };
+    } catch (e) { stSave(); SY.state = 'err'; SY.msg = swhy(e); return { ok: false, err: e.kind || 'x', changed }; }
+  }
+  function sync() {
+    if (!ready()) { notify(); return Promise.resolve({ ok: false, off: true }); }
+    if (sbusy) { sagain = true; return sbusy; }
+    sbusy = (async () => {
+      let res; try { res = await runSync(); } finally { sbusy = null; }
+      notify(); const ch = (res.changed || []).filter(k => !QUIET.test(k)); if (ch.length) remoteBar(ch);
+      if (sagain) { sagain = false; clearTimeout(runTimer); runTimer = setTimeout(sync, res.ok ? 800 : 30000); }
+      return res;
+    })();
+    return sbusy;
+  }
+  function touch(k) {
+    if (!SY.on || !cur) return; const S = st(); S.d[k] = Date.now();
+    clearTimeout(stTimer); stTimer = setTimeout(stSave, 1500); clearTimeout(runTimer); runTimer = setTimeout(sync, 6000);
+  }
+  // The page reloads itself for another device's changes only while it is still fresh (just opened, or just brought back to the screen) and untouched; otherwise a bar offers the reload.
+  let freshAt = Date.now(), acted = false; ['pointerdown', 'keydown', 'touchstart'].forEach(ev => W.addEventListener(ev, () => { acted = true; }, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { freshAt = Date.now(); acted = false; } });
+  function remoteBar(keys) {
+    let again = false; try { const t = Number(sessionStorage.getItem('au23a.sync.rl') || 0); again = Date.now() - t < 60000; } catch (e) { /* ignore */ }
+    if (!acted && !again && Date.now() - freshAt < 20000) { try { sessionStorage.setItem('au23a.sync.rl', String(Date.now())); } catch (e) { /* ignore */ } location.reload(); return; }
+    const old = document.getElementById('crew-syncbar'); if (old) old.remove();
+    const bar = el('div', { id: 'crew-syncbar', class: 'crew-toast crew-syncbar', role: 'status' }, 'Updated from another device (' + keys.length + ') · อัปเดตจากอุปกรณ์อื่นแล้ว ', el('button', { class: 'btn sm pri', type: 'button', onclick: () => location.reload() }, 'Reload · โหลดใหม่'), el('button', { class: 'btn sm', type: 'button', onclick: () => bar.remove() }, '×'));
+    document.body.append(bar);
+  }
+  // turn sync on for this device: prove the PIN (same sign-in as the gate), keep the derived key
+  async function enableSync(pin) {
+    if (!cfg() || !cur) return { ok: false, msg: 'Not available.' };
+    if (!PIN_RE.test(pin)) return { ok: false, msg: 'PIN: 4–8 digits.' };
+    if (!subtle()) return { ok: false, msg: 'This browser cannot encrypt (it needs https). Sync is off.' };
+    const hash = await pinHash(cur, pin);
+    try { await fbLogin(cur, hash); } catch (e) { return { ok: false, msg: e.kind === 'denied' ? 'Wrong PIN for ' + cur + '.' : e.kind === 'nodoc' || e.kind === 'precond' ? 'Callsign ' + cur + ' is not registered on the server.' : why(e) }; }
+    rawSet(pinKey(cur), hash); if (!(await storeKey(cur, pin))) return { ok: false, msg: 'Could not make the encryption key.' };
+    ready(); sync(); notify(); return { ok: true, msg: 'Sync is on.' };
+  }
+  function askBar() {
+    if (document.getElementById('crew-ask') || !cfg() || !cur || ready() || !subtle()) return;
+    let dis = false; try { dis = sessionStorage.getItem('au23a.sync.ask') === '1'; } catch (e) { /* ignore */ }
+    if (dis) return;
+    const pin = el('input', { class: 'crew-in sm', type: 'password', inputmode: 'numeric', maxlength: '8', autocomplete: 'off', placeholder: 'PIN', 'aria-label': 'PIN' }), msg = el('span', { class: 'crew-msg' });
+    ['keydown', 'keyup', 'keypress'].forEach(k => pin.addEventListener(k, e => e.stopPropagation()));
+    const go = el('button', { class: 'btn sm pri', type: 'button', onclick: async () => { const r = await enableSync(pin.value.trim()); if (r.ok) { bar.remove(); toast('Sync is on · ซิงก์ข้ามเครื่องเปิดแล้ว'); } else { msg.className = 'crew-msg bad'; msg.textContent = r.msg; } } }, 'Turn on');
+    const bar = el('div', { id: 'crew-ask', class: 'crew-toast crew-syncbar', role: 'status' }, 'Enter your PIN once on this device to sync your saved data across devices · ใส่ PIN ครั้งเดียวเพื่อซิงก์ข้อมูลข้ามเครื่อง ', pin, go, el('button', { class: 'btn sm', type: 'button', onclick: () => { try { sessionStorage.setItem('au23a.sync.ask', '1'); } catch (e) { /* ignore */ } bar.remove(); } }, 'Later'), msg);
+    document.body.append(bar);
+  }
+  const syncText = () => SY.state === 'busy' ? 'Syncing…' : SY.state === 'ok' ? '✓ ' + SY.msg + (SY.t ? ' · ' + ago(SY.t) : '') + (SY.n ? ' · ' + SY.n + ' items on the server' : '') : SY.msg;
+
   /* ---------- UI: chip + panel ---------- */
   let chip = null, dlg = null;
   const chipText = () => { const m = me(); return cur ? cur + (m && m.w > 0 ? ' · ' + kgTxt(m.w) : ' · set weight') : 'Guest'; };
@@ -2897,7 +3072,11 @@ const CREW = (function () {
     const msg = el('div', { class: 'crew-msg' }), st = el('div', { class: 'crew-st' }), body = el('tbody');
     const save = el('button', { class: 'btn pri sm', type: 'button' }, 'Save weight');
     const stl = () => { st.className = 'crew-st ' + status.state; st.textContent = status.state === 'busy' ? 'Updating…' : (status.msg || '') + (status.state === 'ok' && status.t ? ' · ' + ago(status.t) : ''); };
-    const redraw = () => { rows(body); stl(); chip.textContent = chipText(); };
+    const sst = el('div', { class: 'crew-st' }), spin = el('input', { class: 'crew-in sm', type: 'password', inputmode: 'numeric', maxlength: '8', autocomplete: 'off', placeholder: 'PIN', 'aria-label': 'PIN for sync' }), smsg = el('div', { class: 'crew-msg' });
+    const sbtn = el('button', { class: 'btn sm', type: 'button' });
+    const syl = () => { const on = ready(); sst.className = 'crew-st ' + (SY.state === 'ok' ? 'ok' : SY.state === 'err' ? 'err' : ''); sst.textContent = on ? syncText() : SY.msg; spin.hidden = on || !cfg() || !subtle(); sbtn.hidden = !cfg(); sbtn.textContent = on ? '↻ Sync now · ซิงก์เดี๋ยวนี้' : 'Turn on sync · เปิดซิงก์'; sbtn.disabled = SY.state === 'busy'; };
+    sbtn.onclick = async () => { smsg.className = 'crew-msg'; smsg.textContent = ''; if (ready()) { await sync(); return; } const r = await enableSync(spin.value.trim()); smsg.className = 'crew-msg ' + (r.ok ? 'ok' : 'bad'); smsg.textContent = r.msg; if (r.ok) spin.value = ''; syl(); };
+    const redraw = () => { rows(body); stl(); syl(); chip.textContent = chipText(); };
     const wasHere = redraw; listeners.push(wasHere);
     save.onclick = async () => {
       const kg = parseFloat(String(w.value).replace(',', '.')), p = pin ? pin.value.trim() : '';
@@ -2908,7 +3087,7 @@ const CREW = (function () {
     const lc = el('input', { class: 'crew-in sm', type: 'text', maxlength: '20', placeholder: 'Callsign', 'aria-label': 'Add callsign' }), lw = el('input', { class: 'crew-in sm', type: 'text', inputmode: 'decimal', placeholder: 'kg', 'aria-label': 'Add weight kg' });
     const lm = el('div', { class: 'crew-msg' });
     const add = el('button', { class: 'btn sm', type: 'button', onclick: () => { const r = addLocal(lc.value, parseFloat(String(lw.value).replace(',', '.'))); lm.className = 'crew-msg ' + (r.ok ? 'ok' : 'bad'); lm.textContent = r.ok ? 'Added on this device.' : r.msg; if (r.ok) { lc.value = ''; lw.value = ''; } } }, 'Add');
-    [w, pin, lc, lw].filter(Boolean).forEach(i => { i.addEventListener('keydown', e => e.stopPropagation()); i.addEventListener('keyup', e => e.stopPropagation()); i.addEventListener('keypress', e => e.stopPropagation()); });
+    [w, pin, spin, lc, lw].filter(Boolean).forEach(i => { i.addEventListener('keydown', e => e.stopPropagation()); i.addEventListener('keyup', e => e.stopPropagation()); i.addEventListener('keypress', e => e.stopPropagation()); });
     const d = dlg = el('dialog', { class: 'crew-dlg', 'aria-label': 'Profile' },
       el('div', { class: 'dh' }, el('h2', null, 'Profile · ' + cur), el('button', { class: 'btn sm', type: 'button', onclick: () => d.close() }, 'Close')),
       el('div', { class: 'crew-body' },
@@ -2920,6 +3099,10 @@ const CREW = (function () {
         el('h3', null, 'Crew roster · รายชื่อลูกเรือ'),
         el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign', 'Weight', 'Updated', ''].map(x => el('th', null, x)))), body),
         el('div', { class: 'crew-row' }, st, el('button', { class: 'btn sm', type: 'button', onclick: () => refresh(true) }, '↻ Refresh')),
+        el('h3', null, 'Sync across devices · ซิงก์ข้ามเครื่อง'),
+        el('p', { class: 'crew-fine' }, 'Everything you save here — courseware progress, missions, KML, Weight & Balance, instrument-panel and map settings — is kept encrypted with a key made from your PIN, so the same callsign + PIN on another phone or computer shows it too. Each callsign is separate. If both devices changed the same item, the later change wins (courseware progress is merged, nothing done is lost).'),
+        el('p', { class: 'crew-fine th' }, 'ข้อมูลที่บันทึกทั้งหมดของ callsign นี้ (ความก้าวหน้า courseware, ภารกิจ, KML, W&B, IFR, ตั้งค่าแผนที่) จะถูกเข้ารหัสด้วย PIN แล้วเก็บบนเซิร์ฟเวอร์ ใช้ callsign + PIN เดียวกันบนเครื่องอื่นก็เห็นข้อมูลเดียวกัน'),
+        el('div', { class: 'crew-row' }, spin, sbtn), sst, smsg,
         el('details', null, el('summary', null, 'Add a person on this device only (e.g. a passenger)'), el('div', { class: 'crew-row' }, lc, lw, add), lm),
         el('div', { class: 'crew-row end' }, el('button', { class: 'btn sm', type: 'button', onclick: signOut }, 'Change callsign · เปลี่ยน callsign'))));
     d.addEventListener('close', () => { const i = listeners.indexOf(wasHere); if (i >= 0) listeners.splice(i, 1); d.remove(); if (dlg === d) dlg = null; });
@@ -2946,13 +3129,18 @@ const CREW = (function () {
     if (!cur) { gate(); return; }
     mount();
     refresh(true);
-    setInterval(() => { if (document.visibilityState === 'visible') refresh(false); }, 180000);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(false); });
+    if (ready()) sync(); else setTimeout(askBar, 1500);
+    let lastS = Date.now();
+    const again = () => { if (document.visibilityState === 'visible' && Date.now() - lastS > 45000) { lastS = Date.now(); sync(); } };
+    setInterval(() => { if (document.visibilityState === 'visible') refresh(false); again(); }, 180000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh(false); again(); } else { stSave(); if (SY.on) { clearTimeout(runTimer); sync(); } } });
+    W.addEventListener('online', () => { lastS = 0; again(); });
+    W.addEventListener('pagehide', stSave);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   W.addEventListener('storage', e => { if (e.key === 'au23a.crew.cache' || e.key === 'au23a.crew.local') notify(); });
 
-  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, _sha256js: sha256js, _hash: pinHash };
+  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, sync: Object.assign(sync, { status: SY, text: syncText, enable: enableSync, ready, _sig: sig, _merge: mergeCw, _lim: (c, m) => { CH = c; MAXCH = m; } }), _sha256js: sha256js, _hash: pinHash };
 }());
 
 ;
