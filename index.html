@@ -3008,7 +3008,7 @@ const CREW = (function () {
   }
   function touch(k) {
     if (!SY.on || !cur) return; const S = st(); S.d[k] = Date.now();
-    clearTimeout(stTimer); stTimer = setTimeout(stSave, 1500); clearTimeout(runTimer); runTimer = setTimeout(sync, 6000);
+    clearTimeout(stTimer); stTimer = setTimeout(stSave, 1500); clearTimeout(runTimer); runTimer = setTimeout(sync, 2000);
   }
   // The page reloads itself for another device's changes only while it is still fresh (just opened, or just brought back to the screen) and untouched; otherwise a bar offers the reload.
   let freshAt = Date.now(), acted = false; ['pointerdown', 'keydown', 'touchstart'].forEach(ev => W.addEventListener(ev, () => { acted = true; }, { capture: true, passive: true }));
@@ -3134,8 +3134,10 @@ const CREW = (function () {
     refresh(true);
     if (ready()) sync(); else setTimeout(askBar, 1500);
     let lastS = Date.now();
-    const again = () => { if (document.visibilityState === 'visible' && Date.now() - lastS > 45000) { lastS = Date.now(); sync(); } };
-    setInterval(() => { if (document.visibilityState === 'visible') refresh(false); again(); }, 180000);
+    const again = () => { if (document.visibilityState === 'visible' && Date.now() - lastS > 15000) { lastS = Date.now(); sync(); } };
+    setInterval(() => { if (document.visibilityState === 'visible') refresh(false); }, 180000);
+    setInterval(again, 60000);
+    W.addEventListener('focus', again);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh(false); again(); } else { stSave(); if (SY.on) { clearTimeout(runTimer); sync(); } } });
     W.addEventListener('online', () => { lastS = 0; again(); });
     W.addEventListener('pagehide', stSave);
