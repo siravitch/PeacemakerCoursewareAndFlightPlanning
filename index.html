@@ -2297,6 +2297,12 @@ svg.prp{width:100%;height:100%;display:block;background:#0a1220}
 .crew-syncbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;bottom:64px}
 .crew-syncbar .crew-in{width:90px}
 .crew-fine.th{margin-top:2px}
+.crew-adm{margin-top:14px;padding-top:10px;border-top:1px solid var(--line,#1b2a39)}
+.crew-adm h3{margin:0 0 4px;font-size:13px;letter-spacing:.04em}
+.crew-adm .crew-tb td.tg{text-align:right;white-space:nowrap}
+.crew-adm .crew-tb td.tg .btn{margin-left:4px}
+.crew-adm .crew-row{margin-top:8px}
+.crew-adm .crew-in.sm{width:110px}
 
 </style>
 </head>
@@ -2799,13 +2805,16 @@ const CREW = (function () {
     document.body.append(box); upd(); setTimeout(() => { try { inp.focus(); } catch (e) { /* ignore */ } }, 50);
   }
 
-  /* ---------- shared aircraft empty-weight list: Firestore fleet/{A/C no.} + config/editors {list:[callsigns]} ---------- */
+  /* ---------- shared aircraft empty-weight list: Firestore fleet/{A/C no.} + config/roles {admins:[callsigns], testpilots:[callsigns]} ---------- */
   const FC = 'au23a.crew.fleet', FNO = /^[A-Za-z0-9._-]{1,16}$/, FCHUNK = 8;      // 8 records per commit: the rules read 2 documents for each one (Firestore allows 20 per batch)
-  const fcache = () => jget(FC, { t: 0, items: [], editors: [] });
+  const fcache = () => jget(FC, { t: 0, items: [], editors: [], admins: [], testpilots: [] });
   const fl = {
     enabled: () => !!cfg() && mode !== 'off' && !!cur,
     items: () => (fcache().items || []).slice().sort((a, b) => (a.o - b.o) || (a.no < b.no ? -1 : 1)),
-    editors: () => fcache().editors || [],
+    editors: () => fcache().editors || [],                       // callsigns that may change the list = test pilots + admins
+    admins: () => fcache().admins || [],
+    role: () => !cur ? null : fl.admins().indexOf(cur) >= 0 ? 'admin' : (fcache().testpilots || []).indexOf(cur) >= 0 ? 'tester' : 'pilot',
+    isAdmin: () => fl.enabled() && fl.admins().indexOf(cur) >= 0 && !!rawGet(pinKey(cur)),
     canEdit: () => fl.enabled() && fl.editors().indexOf(cur) >= 0 && !!rawGet(pinKey(cur)),
     pending: () => rawGet('au23a.crew.fleet.pending') === '1',
     validNo: no => FNO.test(String(no)),
@@ -2813,12 +2822,13 @@ const CREW = (function () {
     last: () => { const L = fl.items(); let m = null; L.forEach(r => { if (!m || (r.t || 0) > (m.t || 0)) m = r; }); return m; }
   };
   const fnotify = () => fl.listeners.slice().forEach(f => { try { f(); } catch (e) { /* ignore */ } });
+  fl.listeners.push(() => notify());                             // chip badge / profile panel follow a changed roles list
   let fbusy = null;
   fl.refresh = function (force) {
     if (!fl.enabled()) return Promise.resolve(false);
     if (fbusy) return fbusy;
     fbusy = (async () => {
-      const c = cfg(), out = []; let tok = '', editors = fcache().editors || [];
+      const c = cfg(), out = []; let tok = '', editors = fcache().editors || [], admins = fcache().admins || [], testers = fcache().testpilots || [];
       try {
         for (let p = 0; p < 10; p++) {
           const j = await fetchJson(docs(c) + '/fleet?pageSize=300&key=' + encodeURIComponent(c.apiKey) + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
@@ -2830,8 +2840,12 @@ const CREW = (function () {
           });
           tok = j.nextPageToken || ''; if (!tok) break;
         }
-        try { const e = await fetchJson(docs(c) + '/config/editors?key=' + encodeURIComponent(c.apiKey)); const v = e && e.fields && e.fields.list && e.fields.list.arrayValue && e.fields.list.arrayValue.values; editors = (v || []).map(x => String(x.stringValue || '').toUpperCase()).filter(Boolean); } catch (e) { if (e.kind === 'nodoc' || e.kind === 'nodb') editors = []; else throw e; }
-        rawSet(FC, JSON.stringify({ t: Date.now(), items: out, editors }));
+        try {
+          const e = await fetchJson(docs(c) + '/config/roles?key=' + encodeURIComponent(c.apiKey)), F = (e && e.fields) || {};
+          const lst = f => ((f && f.arrayValue && f.arrayValue.values) || []).map(x => String(x.stringValue || '').toUpperCase()).filter(Boolean);
+          admins = lst(F.admins); testers = lst(F.testpilots); editors = Array.from(new Set(admins.concat(testers)));
+        } catch (e) { if (e.kind === 'nodoc' || e.kind === 'nodb') { admins = []; testers = []; editors = []; } else throw e; }
+        rawSet(FC, JSON.stringify({ t: Date.now(), items: out, editors, admins, testpilots: testers }));
         fl.status = { state: 'ok', msg: '', t: Date.now() };
       } catch (e) { fl.status = { state: 'err', msg: why(e), t: Date.now() }; }
       finally { fbusy = null; fnotify(); }
@@ -2860,12 +2874,12 @@ const CREW = (function () {
         await commit([pinDoc(cur, hash, n, 'exists')].concat(part.map(j => ({ update: { name: base + 'fleet/' + j.r.no, fields: Object.assign(wr(j.r, j.x), { n: { stringValue: n } }) }, updateTransforms: [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }] }))));
       }
       rawDel('au23a.crew.fleet.pending');
-      const now = Date.now(); rawSet(FC, JSON.stringify({ t: now, editors: fl.editors(), items: list.map((r, i) => Object.assign({}, r, { o: i, by: cur, t: now })) }));
+      const now = Date.now(); rawSet(FC, JSON.stringify({ t: now, editors: fl.editors(), admins: fl.admins(), testpilots: fcache().testpilots || [], items: list.map((r, i) => Object.assign({}, r, { o: i, by: cur, t: now })) }));
       fl.status = { state: 'ok', msg: '', t: now }; fnotify(); fl.refresh(true);
       return { ok: true, n: ups.length + rem.length, msg: 'Shared: ' + ups.length + ' saved' + (rem.length ? ', ' + rem.length + ' removed' : '') + '.' };
     } catch (e) {
       rawSet('au23a.crew.fleet.pending', '1');
-      return { ok: false, msg: (e.kind === 'denied' ? 'Refused by the server — your callsign is not in the editors list, or the PIN no longer matches.' : e.kind === 'network' ? 'No connection — the change is on this device only and will be sent when you are online.' : why(e)) };
+      return { ok: false, msg: (e.kind === 'denied' ? 'Refused by the server — your callsign is not a test pilot or admin in the roles list, or the PIN no longer matches.' : e.kind === 'network' ? 'No connection — the change is on this device only and will be sent when you are online.' : why(e)) };
     }
   };
 
@@ -3042,10 +3056,45 @@ const CREW = (function () {
   }
   const syncText = () => SY.state === 'busy' ? 'Syncing…' : SY.state === 'ok' ? '✓ ' + SY.msg + (SY.t ? ' · ' + ago(SY.t) : '') + (SY.n ? ' · ' + SY.n + ' items on the server' : '') : SY.msg;
 
+  /* ---------- administrator: reset a PIN / delete a callsign ----------
+     One commit = a re-write of the admin's own pins record (PIN proof) + ops/adm-<TARGET> {by, a, n} + the deletes. The rules accept a delete only when that ops document is written IN THE SAME commit
+     (its t must equal the request time, so an old one cannot be reused) by a callsign listed in config/roles.admins. a = 'pin' removes pins/<TARGET> only (the person registers again, the weight stays until then);
+     a = 'all' also removes crew/<TARGET> and everything under ud/<TARGET>/k/. */
+  async function adminAct(target, kind) {
+    if (!fl.isAdmin()) return { ok: false, msg: 'Only an administrator can do this.' };
+    target = norm(target); if (!CS_RE.test(target)) return { ok: false, msg: 'Callsign: 2–16 letters / digits.' };
+    if (target === cur) return { ok: false, msg: 'You cannot do this to your own callsign.' };
+    if (fl.admins().indexOf(target) >= 0) return { ok: false, msg: target + ' is an administrator — remove it from the roles list in the Firebase console first.' };
+    const c = cfg(), base = 'projects/' + c.projectId + '/databases/(default)/documents/', hash = rawGet(pinKey(cur));
+    try {
+      const names = [base + 'pins/' + target];
+      if (kind === 'all') {
+        names.push(base + 'crew/' + target);
+        let tok = '';
+        for (let p = 0; p < 10; p++) {
+          const j = await fetchJson(docs(c) + '/ud/' + target + '/k?pageSize=300&mask.fieldPaths=n&key=' + encodeURIComponent(c.apiKey) + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
+          (j.documents || []).forEach(d => names.push(d.name)); tok = j.nextPageToken || ''; if (!tok) break;
+        }
+      }
+      const CH2 = 10;
+      for (let i = 0; i < names.length; i += CH2) {
+        const n = nonce();
+        await commit([pinDoc(cur, hash, n, 'exists'),
+          { update: { name: base + 'ops/adm-' + target, fields: { by: { stringValue: cur }, a: { stringValue: kind }, n: { stringValue: n } } }, updateTransforms: [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }] }]
+          .concat(names.slice(i, i + CH2).map(x => ({ delete: x }))));
+      }
+      await refresh(true);
+      return { ok: true, n: names.length, msg: kind === 'all' ? target + ' deleted (' + names.length + ' records).' : 'PIN of ' + target + ' reset — they can register again with a new PIN.' };
+    } catch (e) {
+      return { ok: false, msg: e.kind === 'denied' ? 'Refused by the server — you are not an administrator in the roles list, the PIN no longer matches, or the rules are not published.' : e.kind === 'nodoc' || e.kind === 'precond' ? 'Your own callsign is not registered on the server.' : why(e) };
+    }
+  }
+
   /* ---------- UI: chip + panel ---------- */
   let chip = null, dlg = null;
   const syncWarn = () => !!(cur && mode !== 'off' && cfg() && (!SY.on || SY.state === 'err'));
-  const chipText = () => { const m = me(); return cur ? cur + (m && m.w > 0 ? ' · ' + kgTxt(m.w) : ' · set weight') + (syncWarn() ? ' ⚠' : '') : 'Guest'; };
+  const roleTag = () => { const r = cfg() && cur ? fl.role() : null; return r === 'admin' ? ' · ADMIN' : r === 'tester' ? ' · TEST PILOT' : ''; };
+  const chipText = () => { const m = me(); return cur ? cur + (m && m.w > 0 ? ' · ' + kgTxt(m.w) : ' · set weight') + roleTag() + (syncWarn() ? ' ⚠' : '') : 'Guest'; };
   const chipTitle = () => 'Profile · callsign and crew weights' + (syncWarn() ? ' — SYNC OFF: ' + SY.msg + ' (open for details)' : '');
   function mount() {
     if (chip && document.body.contains(chip)) return;
@@ -3079,7 +3128,22 @@ const CREW = (function () {
     const sbtn = el('button', { class: 'btn sm', type: 'button' });
     const syl = () => { const on = ready(); sst.className = 'crew-st ' + (SY.state === 'ok' ? 'ok' : SY.state === 'err' ? 'err' : ''); sst.textContent = on ? syncText() : SY.msg; spin.hidden = on || !cfg() || !subtle(); sbtn.hidden = !cfg(); sbtn.textContent = on ? '↻ Sync now · ซิงก์เดี๋ยวนี้' : 'Turn on sync · เปิดซิงก์'; sbtn.disabled = SY.state === 'busy'; };
     sbtn.onclick = async () => { smsg.className = 'crew-msg'; smsg.textContent = ''; if (ready()) { await sync(); return; } const r = await enableSync(spin.value.trim()); smsg.className = 'crew-msg ' + (r.ok ? 'ok' : 'bad'); smsg.textContent = r.msg; if (r.ok) spin.value = ''; syl(); };
-    const redraw = () => { rows(body); stl(); syl(); chip.textContent = chipText(); };
+    const adm = el('div', { class: 'crew-adm' }); let aLast = null;
+    const admDraw = () => {
+      adm.replaceChildren(); if (!fl.isAdmin()) return;
+      const amsg = el('div', { class: 'crew-msg' + (aLast ? ' ' + aLast.c : '') }, aLast ? aLast.t : ''), ac = el('input', { class: 'crew-in sm', type: 'text', maxlength: '20', placeholder: 'Callsign', 'aria-label': 'Callsign to manage' });
+      ac.addEventListener('keydown', e => e.stopPropagation()); ac.addEventListener('keyup', e => e.stopPropagation()); ac.addEventListener('keypress', e => e.stopPropagation());
+      const sure = (b, label, run) => { b.onclick = () => { if (b.dataset.arm === '1') { clearTimeout(b._t); b.dataset.arm = ''; b.textContent = label; run(); return; } b.dataset.arm = '1'; b.textContent = 'Sure? · แน่ใจ?'; b._t = setTimeout(() => { b.dataset.arm = ''; b.textContent = label; }, 4000); }; };
+      const act = async (cs, kind) => { amsg.className = 'crew-msg'; amsg.textContent = 'Working…'; const r = await adminAct(cs, kind); aLast = { c: r.ok ? 'ok' : 'bad', t: r.msg }; amsg.className = 'crew-msg ' + aLast.c; amsg.textContent = r.msg; if (r.ok) { ac.value = ''; redraw(); } };
+      const mk = (cs) => { const a = el('button', { class: 'btn sm', type: 'button' }, 'Reset PIN'), d = el('button', { class: 'btn sm', type: 'button' }, 'Delete'); sure(a, 'Reset PIN', () => act(cs(), 'pin')); sure(d, 'Delete', () => act(cs(), 'all')); return [a, d]; };
+      const tb = el('tbody'); entries().filter(r => r.cs !== cur && r.src === 'cloud').forEach(r => { const [a, d] = mk(() => r.cs); tb.append(el('tr', null, el('td', { class: 'cs' }, r.cs), el('td', { class: 'w' }, kgTxt(r.w)), el('td', { class: 'tg' }, a, d))); });
+      const [a2, d2] = mk(() => ac.value);
+      adm.append(el('h3', null, 'Administrator · ผู้ดูแลระบบ'),
+        el('p', { class: 'crew-fine' }, 'Reset PIN = the person registers again with a new PIN (weight stays until then). Delete = removes the callsign, its weight and all its synced data (cannot be undone). Use it for duplicate or abandoned registrations.'),
+        tb.children.length ? el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign', 'Weight', ''].map(x => el('th', null, x)))), tb) : el('p', { class: 'crew-fine' }, 'No one else on the roster.'),
+        el('div', { class: 'crew-row' }, ac, a2, d2), amsg);
+    };
+    const redraw = () => { rows(body); stl(); syl(); admDraw(); chip.textContent = chipText(); };
     const wasHere = redraw; listeners.push(wasHere);
     save.onclick = async () => {
       const kg = parseFloat(String(w.value).replace(',', '.')), p = pin ? pin.value.trim() : '';
@@ -3092,7 +3156,7 @@ const CREW = (function () {
     const add = el('button', { class: 'btn sm', type: 'button', onclick: () => { const r = addLocal(lc.value, parseFloat(String(lw.value).replace(',', '.'))); lm.className = 'crew-msg ' + (r.ok ? 'ok' : 'bad'); lm.textContent = r.ok ? 'Added on this device.' : r.msg; if (r.ok) { lc.value = ''; lw.value = ''; } } }, 'Add');
     [w, pin, spin, lc, lw].filter(Boolean).forEach(i => { i.addEventListener('keydown', e => e.stopPropagation()); i.addEventListener('keyup', e => e.stopPropagation()); i.addEventListener('keypress', e => e.stopPropagation()); });
     const d = dlg = el('dialog', { class: 'crew-dlg', 'aria-label': 'Profile' },
-      el('div', { class: 'dh' }, el('h2', null, 'Profile · ' + cur), el('button', { class: 'btn sm', type: 'button', onclick: () => d.close() }, 'Close')),
+      el('div', { class: 'dh' }, el('h2', null, 'Profile · ' + cur + roleTag()), el('button', { class: 'btn sm', type: 'button', onclick: () => d.close() }, 'Close')),
       el('div', { class: 'crew-body' },
         el('h3', null, 'My weight · น้ำหนักของฉัน'),
         el('p', { class: 'crew-fine' }, 'Bare body weight in kg (without flight gear or parachute — the parachute has its own box in Weight & Balance). Shown to the crew you fly with.'),
@@ -3107,6 +3171,7 @@ const CREW = (function () {
         el('p', { class: 'crew-fine th' }, 'ข้อมูลที่บันทึกทั้งหมดของ callsign นี้ (ความก้าวหน้า courseware, ภารกิจ, KML, W&B, IFR, ตั้งค่าแผนที่) จะถูกเข้ารหัสด้วย PIN แล้วเก็บบนเซิร์ฟเวอร์ ใช้ callsign + PIN เดียวกันบนเครื่องอื่นก็เห็นข้อมูลเดียวกัน'),
         el('div', { class: 'crew-row' }, spin, sbtn), sst, smsg,
         el('details', null, el('summary', null, 'Add a person on this device only (e.g. a passenger)'), el('div', { class: 'crew-row' }, lc, lw, add), lm),
+        adm,
         el('div', { class: 'crew-row end' }, el('button', { class: 'btn sm', type: 'button', onclick: signOut }, 'Change callsign · เปลี่ยน callsign'))));
     d.addEventListener('close', () => { const i = listeners.indexOf(wasHere); if (i >= 0) listeners.splice(i, 1); d.remove(); if (dlg === d) dlg = null; });
     document.body.append(d); redraw(); d.showModal(); refresh(false);
@@ -3145,7 +3210,7 @@ const CREW = (function () {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   W.addEventListener('storage', e => { if (e.key === 'au23a.crew.cache' || e.key === 'au23a.crew.local') notify(); });
 
-  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, sync: Object.assign(sync, { status: SY, text: syncText, enable: enableSync, ready, _sig: sig, _merge: mergeCw, _lim: (c, m) => { CH = c; MAXCH = m; } }), _sha256js: sha256js, _hash: pinHash };
+  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, role: fl.role, isAdmin: fl.isAdmin, adminAct, sync: Object.assign(sync, { status: SY, text: syncText, enable: enableSync, ready, _sig: sig, _merge: mergeCw, _lim: (c, m) => { CH = c; MAXCH = m; } }), _sha256js: sha256js, _hash: pinHash };
 }());
 
 ;
