@@ -5,6 +5,7 @@ rules_version = '2';
 //   fleet/{A/C no.}  : the aircraft empty-weight records (weight lb, arm in, W.B. date, remark) — public read; written ONLY by an editor
 //   ud/{CALLSIGN}/k/*: that callsign's saved data, encrypted with a key made from the PIN (public read, ciphertext only); written only with the PIN proof
 //   config/roles    : {admins: ["CALLSIGN", ...], testpilots: ["CALLSIGN", ...]} — YOU create this document in the console (see docs/AIRCRAFT-LIST-SETUP.md); the app cannot write it.
+//                       (admins can change this document from inside the app; the first copy is created by you in the console.)
 //                       testpilots + admins may change the aircraft list; admins may also reset a PIN or delete a callsign (ops/adm-{CALLSIGN}). Everyone else is a squadron pilot (uses the app, changes only their own data).
 //   ops/adm-{CALLSIGN}: written by an admin in the SAME commit as the delete it authorises (a = 'pin' → delete pins/{CALLSIGN}; a = 'all' → also crew/{CALLSIGN} and ud/{CALLSIGN}/k/*). Never readable.
 // A weight can only be written in the SAME commit as its pin record, and only when that pin record is new (first claim of the callsign)
@@ -44,9 +45,22 @@ service cloud.firestore {
         && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(cs)).data.n;
     }
     // ---- shared aircraft empty-weight list ------------------------------------------------------------------
+    // config/roles can be CHANGED (never created or deleted) by an admin of the current list, in the same commit as a re-write of their own pins record.
+    // The administrator cannot remove their own name (so the list can never be left without an admin by one wrong click). Other config/* documents stay read-only.
     match /config/{d} {
       allow read: if true;
-      allow write: if false;
+      allow create, delete: if false;
+      allow update: if d == 'roles'
+        && request.resource.data.keys().hasOnly(['admins', 'testpilots', 'by', 'n', 't'])
+        && request.resource.data.keys().hasAll(['admins', 'testpilots', 'by', 'n', 't'])
+        && request.resource.data.admins is list && request.resource.data.admins.size() <= 20
+        && request.resource.data.testpilots is list && request.resource.data.testpilots.size() <= 40
+        && request.resource.data.by is string && okCs(request.resource.data.by)
+        && request.resource.data.by in resource.data.admins
+        && request.resource.data.by in request.resource.data.admins
+        && request.resource.data.t == request.time
+        && request.resource.data.n is string && request.resource.data.n.size() <= 40
+        && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(request.resource.data.by)).data.n;
     }
 
     // ---- administrator actions: one document per target callsign, rewritten for every action. Only an admin can write it, proving the PIN in the same commit. ----

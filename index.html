@@ -2303,6 +2303,12 @@ svg.prp{width:100%;height:100%;display:block;background:#0a1220}
 .crew-adm .crew-tb td.tg .btn{margin-left:4px}
 .crew-adm .crew-row{margin-top:8px}
 .crew-adm .crew-in.sm{width:110px}
+.crew-roles{margin-top:12px}
+.crew-roles h3{margin:0 0 4px;font-size:13px;letter-spacing:.04em}
+.crew-rline{margin:4px 0;font-size:12.5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.crew-rl{display:inline-flex;align-items:center;gap:2px;padding:1px 4px 1px 8px;border:1px solid var(--line,#1b2a39);border-radius:12px}
+.crew-rl .btn{padding:0 6px;min-height:20px}
+.crew-roles select.crew-in{width:auto;max-width:210px}
 
 </style>
 </head>
@@ -3090,6 +3096,30 @@ const CREW = (function () {
     }
   }
 
+  /* ---------- administrator: change roles (config/roles) in the app ----------
+     Reads the live document first and writes it back with its updateTime as precondition (two admins cannot overwrite each other silently), in one commit with the admin's own PIN proof.
+     role = 'admin' | 'tester' | 'pilot' (pilot = remove from both lists). An admin cannot remove their own admin role (nobody could undo it from the app, and the rules refuse it too). */
+  async function setRole(target, role) {
+    if (!fl.isAdmin()) return { ok: false, msg: 'Only an administrator can do this.' };
+    target = norm(target); if (!CS_RE.test(target)) return { ok: false, msg: 'Callsign: 2–16 letters / digits.' };
+    if (target === cur && role !== 'admin') return { ok: false, msg: 'You cannot remove your own administrator role — ask another administrator.' };
+    const c = cfg(), hash = rawGet(pinKey(cur)), base = 'projects/' + c.projectId + '/databases/(default)/documents/';
+    try {
+      const d = await fetchJson(docs(c) + '/config/roles?key=' + encodeURIComponent(c.apiKey)), F = (d && d.fields) || {};
+      const lst = f => ((f && f.arrayValue && f.arrayValue.values) || []).map(x => String(x.stringValue || '').toUpperCase()).filter(Boolean);
+      let A = lst(F.admins).filter(x => x !== target), T = lst(F.testpilots).filter(x => x !== target);
+      if (role === 'admin') A.push(target); else if (role === 'tester') T.push(target);
+      if (A.length > 20 || T.length > 40) return { ok: false, msg: 'Too many names in the list.' };
+      const arr = l => ({ arrayValue: { values: l.map(x => ({ stringValue: x })) } }), n = nonce();
+      await commit([pinDoc(cur, hash, n, 'exists'),
+        { update: { name: base + 'config/roles', fields: { admins: arr(A), testpilots: arr(T), by: { stringValue: cur }, n: { stringValue: n } } }, updateTransforms: [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }], currentDocument: { updateTime: d.updateTime } }]);
+      await fl.refresh(true);
+      return { ok: true, msg: target + (role === 'admin' ? ' is now an administrator.' : role === 'tester' ? ' is now a test pilot.' : ' is now a normal pilot.') };
+    } catch (e) {
+      return { ok: false, msg: e.kind === 'denied' ? 'Refused by the server — you are not an administrator in the roles list, the PIN no longer matches, or the rules are not updated yet.' : e.kind === 'precond' ? 'The roles list was changed by someone else a moment ago — try again.' : e.kind === 'nodoc' || e.kind === 'nodb' ? 'The roles document does not exist yet — create config/roles in the Firebase console once.' : why(e) };
+    }
+  }
+
   /* ---------- UI: chip + panel ---------- */
   let chip = null, dlg = null;
   const syncWarn = () => !!(cur && mode !== 'off' && cfg() && (!SY.on || SY.state === 'err'));
@@ -3128,7 +3158,7 @@ const CREW = (function () {
     const sbtn = el('button', { class: 'btn sm', type: 'button' });
     const syl = () => { const on = ready(); sst.className = 'crew-st ' + (SY.state === 'ok' ? 'ok' : SY.state === 'err' ? 'err' : ''); sst.textContent = on ? syncText() : SY.msg; spin.hidden = on || !cfg() || !subtle(); sbtn.hidden = !cfg(); sbtn.textContent = on ? '↻ Sync now · ซิงก์เดี๋ยวนี้' : 'Turn on sync · เปิดซิงก์'; sbtn.disabled = SY.state === 'busy'; };
     sbtn.onclick = async () => { smsg.className = 'crew-msg'; smsg.textContent = ''; if (ready()) { await sync(); return; } const r = await enableSync(spin.value.trim()); smsg.className = 'crew-msg ' + (r.ok ? 'ok' : 'bad'); smsg.textContent = r.msg; if (r.ok) spin.value = ''; syl(); };
-    const adm = el('div', { class: 'crew-adm' }); let aLast = null;
+    const adm = el('div', { class: 'crew-adm' }); let aLast = null, aLastR = null;
     const admDraw = () => {
       adm.replaceChildren(); if (!fl.isAdmin()) return;
       const amsg = el('div', { class: 'crew-msg' + (aLast ? ' ' + aLast.c : '') }, aLast ? aLast.t : ''), ac = el('input', { class: 'crew-in sm', type: 'text', maxlength: '20', placeholder: 'Callsign', 'aria-label': 'Callsign to manage' });
@@ -3141,7 +3171,22 @@ const CREW = (function () {
       adm.append(el('h3', null, 'Administrator · ผู้ดูแลระบบ'),
         el('p', { class: 'crew-fine' }, 'Reset PIN = the person registers again with a new PIN (weight stays until then). Delete = removes the callsign, its weight and all its synced data (cannot be undone). Use it for duplicate or abandoned registrations.'),
         tb.children.length ? el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign', 'Weight', ''].map(x => el('th', null, x)))), tb) : el('p', { class: 'crew-fine' }, 'No one else on the roster.'),
-        el('div', { class: 'crew-row' }, ac, a2, d2), amsg);
+        el('div', { class: 'crew-row' }, ac, a2, d2), amsg, rolesBox());
+    };
+    const rolesBox = () => {
+      const rm = el('div', { class: 'crew-msg' }, aLastR ? aLastR.t : ''); if (aLastR) rm.className = 'crew-msg ' + aLastR.c;
+      const run = async (cs, role) => { rm.className = 'crew-msg'; rm.textContent = 'Working…'; const r = await setRole(cs, role); aLastR = { c: r.ok ? 'ok' : 'bad', t: r.msg }; rm.className = 'crew-msg ' + aLastR.c; rm.textContent = r.msg; if (r.ok) redraw(); };
+      const chip2 = (cs, role) => { const x = el('button', { class: 'btn sm', type: 'button', title: 'Remove this role · ถอดบทบาท' }, '✕'); if (cs === cur) x.hidden = true; x.onclick = () => { if (x.dataset.arm === '1') { clearTimeout(x._t); run(cs, 'pilot'); return; } x.dataset.arm = '1'; x.textContent = 'Sure?'; x._t = setTimeout(() => { x.dataset.arm = ''; x.textContent = '✕'; }, 4000); }; return el('span', { class: 'crew-rl' }, cs, ' ', x); };
+      const rn = el('input', { class: 'crew-in sm', type: 'text', maxlength: '20', placeholder: 'Callsign', 'aria-label': 'Callsign to give a role' });
+      ['keydown', 'keyup', 'keypress'].forEach(k => rn.addEventListener(k, e => e.stopPropagation()));
+      const sel = el('select', { class: 'crew-in sm', 'aria-label': 'Role' }, el('option', { value: 'tester' }, 'Test pilot · นักบินลองเครื่อง'), el('option', { value: 'admin' }, 'Administrator · แอดมิน'));
+      const add = el('button', { class: 'btn sm pri', type: 'button' }, 'Set role'); add.onclick = () => { const cs = norm(rn.value); if (sel.value === 'admin' && add.dataset.arm !== '1') { add.dataset.arm = '1'; add.textContent = 'Sure? · แน่ใจ?'; setTimeout(() => { add.dataset.arm = ''; add.textContent = 'Set role'; }, 4000); return; } add.dataset.arm = ''; add.textContent = 'Set role'; run(cs, sel.value); };
+      const ad = fl.admins(), te = (fcache().testpilots || []);
+      return el('div', { class: 'crew-roles' }, el('h3', null, 'Roles · บทบาท'),
+        el('p', { class: 'crew-fine' }, 'Test pilots may change the aircraft empty weights. Administrators may also reset PINs, delete callsigns and change roles. Everyone else is a normal pilot.'),
+        el('div', { class: 'crew-rline' }, el('b', null, 'Administrators: '), ad.length ? ad.map(c2 => chip2(c2, 'admin')) : '—'),
+        el('div', { class: 'crew-rline' }, el('b', null, 'Test pilots: '), te.length ? te.map(c2 => chip2(c2, 'tester')) : '—'),
+        el('div', { class: 'crew-row' }, rn, sel, add), rm);
     };
     const redraw = () => { rows(body); stl(); syl(); admDraw(); chip.textContent = chipText(); };
     const wasHere = redraw; listeners.push(wasHere);
@@ -3210,7 +3255,7 @@ const CREW = (function () {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   W.addEventListener('storage', e => { if (e.key === 'au23a.crew.cache' || e.key === 'au23a.crew.local') notify(); });
 
-  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, role: fl.role, isAdmin: fl.isAdmin, adminAct, sync: Object.assign(sync, { status: SY, text: syncText, enable: enableSync, ready, _sig: sig, _merge: mergeCw, _lim: (c, m) => { CH = c; MAXCH = m; } }), _sha256js: sha256js, _hash: pinHash };
+  return { callsign: () => cur, mode, norm, validKg, me, get, list: entries, picker, refresh, onChange: f => listeners.push(f), saveMine, addLocal, delLocal, signIn, signOut, openPanel, status, stale, ago, kgTxt, LB, doLogin, doRegister, fleet: fl, role: fl.role, isAdmin: fl.isAdmin, adminAct, setRole, sync: Object.assign(sync, { status: SY, text: syncText, enable: enableSync, ready, _sig: sig, _merge: mergeCw, _lim: (c, m) => { CH = c; MAXCH = m; } }), _sha256js: sha256js, _hash: pinHash };
 }());
 
 ;
