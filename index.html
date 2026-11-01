@@ -755,6 +755,8 @@ html[data-hud="off"] #side,html[data-hud="off"] #rcol,html[data-hud="off"] #shee
 .tab[aria-selected=true] svg{color:var(--amber)}
 #clock{font-size:11px;color:var(--mute);text-align:right;line-height:1.2}
 #clock b{color:var(--ink);font-weight:600}
+#clock a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--line2,#2a3a4c)}
+#clock a:hover{color:var(--ink)}
 #sheetbar{display:none}
 
 /* ---------- buttons / fields ---------- */
@@ -2327,7 +2329,7 @@ svg.prp{width:100%;height:100%;display:block;background:#0a1220}
     </div>
     <nav id="tabs" role="tablist" aria-label="Mission modules" class="flex min-w-0 flex-1 gap-1 overflow-x-auto"></nav>
     <div class="top-r flex flex-none items-center gap-2.5">
-      <div id="clock" class="mono" aria-label="UTC clock"></div>
+      <div id="clock" class="mono" aria-label="UTC and Thailand time clock"></div>
       <button class="btn sm" id="btn-hud" type="button" title="Show / hide all panels (H)" aria-pressed="true">Panels</button>
       <button class="btn sm" id="btn-help" type="button">Help</button>
       <button class="btn sm pri" id="btn-all" type="button" title="Export all six missions as one KML (the courseware has no map data)">Export all KML</button>
@@ -30109,8 +30111,24 @@ const App = (function () {
       else if (ev.key === ' ' && ev.target === document.body) { ev.preventDefault(); A.setPlay(!ANIM.playing); }
     });
     document.addEventListener('keyup', ev => { if (A.active === 'ifr' && !(ev.target.closest && ev.target.closest('input,select,textarea,dialog'))) IFR_UI.key(ev); });
-    const tick = () => { const d = new Date(); $('#clock').innerHTML = '<b>' + d.toISOString().slice(11, 19) + 'Z</b><br>' + d.toISOString().slice(0, 10); };
-    tick(); setInterval(tick, 1000);
+    /* Clock: UTC (Zulu) and Thailand standard time (ICT = UTC+7, no daylight saving, so it equals the Royal Thai Navy Hydrographic Dept. time at time2.navy.mi.th when the clock is right).
+       The navy site itself cannot be read from this page: it is http-only (an https page may not load it), has no data interface / CORS, and its time service is NTP (UDP), which browsers cannot use.
+       So the time comes from the device clock, corrected when possible by the `Date` header of this page's own https server (≈ ±1 s); the ICT line links to the navy page for a visual check. */
+    let off = 0, chk = 0;
+    const syncClock = async () => {
+      if (!/^https?:$/.test(location.protocol) || navigator.webdriver) return;
+      try {
+        const t0 = Date.now(), r = await fetch(location.pathname + '?_t=' + t0, { method: 'HEAD', cache: 'no-store' }), t1 = Date.now(), dh = r.headers.get('Date'), sv = dh ? Date.parse(dh) : NaN;
+        if (!isFinite(sv) || t1 - t0 > 5000) return;
+        const o = sv + 500 - (t0 + t1) / 2;                                   // the header has 1 s resolution → take the middle of that second
+        off = Math.abs(o) > 1500 ? o : 0; chk = t1;                            // within 1.5 s: the device clock is already as good as we can tell
+      } catch (e) { /* offline or blocked: keep the device clock */ }
+    };
+    const tick = () => {
+      const d = new Date(Date.now() + off), z = d.toISOString(), th = new Date(d.getTime() + 7 * 36e5).toISOString(), plus = th.slice(0, 10) !== z.slice(0, 10) ? ' +1d' : '';
+      $('#clock').innerHTML = '<b>' + z.slice(11, 19) + 'Z</b> ' + z.slice(0, 10) + '<br><a href="http://www.time2.navy.mi.th" target="_blank" rel="noopener" title="Thailand standard time = UTC+7 (Royal Thai Navy Hydrographic Dept., time2.navy.mi.th — click to compare). Source: ' + (chk ? 'this site’s server time' + (off ? ', device clock was off by ' + Math.round(off / 1000) + ' s' : ' (matches the device clock)') : 'device clock') + '."><b>' + th.slice(11, 19) + '</b> ICT' + plus + (chk ? ' ✓' : '') + '</a>';
+    };
+    syncClock().then(tick); tick(); setInterval(tick, 1000); setInterval(syncClock, 30 * 60000); document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - chk > 5 * 60000) syncClock(); });
     let tab = 'nav'; try { tab = localStorage.getItem('mission-planner.tab') || 'nav'; } catch (e) { /* ignore */ }
     A.activate(MODS[tab] ? tab : 'nav');
     document.documentElement.dataset.ready = '1';
