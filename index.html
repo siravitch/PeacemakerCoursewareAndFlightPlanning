@@ -3240,11 +3240,12 @@ const CREW = (function () {
      people/{CS} = {w kg, nm name, by, n, t[, x]}, written in one commit with the administrator's own pins re-write (the same PIN proof as every other admin action).
      A person who registers the callsign later overrides it (crew/{CS} wins in entries()). "Removing" writes x:true (the rules do not allow deletes, like the aircraft list). */
   async function personSave(cs, kg, nm, hide) {
-    if (!fl.isAdmin()) return { ok: false, msg: 'Only an administrator can do this.' };
+    if (!cfg()) { if (hide) return { ok: false, msg: 'No shared roster is configured.' }; const r = addLocal(cs, kg); return r.ok ? { ok: true, msg: 'Added on this device (no shared roster configured).' } : r; }
+    if (!cur || !rawGet(pinKey(cur))) return { ok: false, msg: 'Enter the PIN of your callsign first (see “My weight”) — then everyone can see the people you add.' };
     cs = norm(cs); if (!CS_RE.test(cs)) return { ok: false, msg: 'Callsign: 2–16 letters / digits (A–Z, 0–9, - _).' };
     nm = String(nm || '').trim().slice(0, 40);
     const reg = (cloud().items || {})[cs]; if (reg && !hide) return { ok: false, msg: cs + ' is registered and sets their own weight — nothing to add.' };
-    const old = (cloud().ppl || {})[cs]; if (hide) kg = old ? old.w : 70; else if (!validKg(kg)) return { ok: false, msg: 'Weight must be between 30 and 200 kg.' };
+    const old = (cloud().ppl || {})[cs]; if (old && old.by && old.by !== cur && !fl.isAdmin()) return { ok: false, msg: cs + ' was added by ' + old.by + ' — only they or an Admin can change it.' }; if (hide) kg = old ? old.w : 70; else if (!validKg(kg)) return { ok: false, msg: 'Weight must be between 30 and 200 kg.' };
     kg = Math.round(kg * 10) / 10;
     const c = cfg(), hash = rawGet(pinKey(cur)), base = 'projects/' + c.projectId + '/databases/(default)/documents/', n = nonce();
     try {
@@ -3253,7 +3254,7 @@ const CREW = (function () {
       await refresh(true);
       return { ok: true, msg: hide ? cs + ' removed from the shared list.' : cs + ' saved for everyone · ' + kgTxt(kg) + (nm ? ' · ' + nm : '') };
     } catch (e) {
-      return { ok: false, msg: e.kind === 'denied' ? 'Refused by the server — you are not an administrator in the roles list, the PIN no longer matches, or the new rules (people/{CALLSIGN}) are not published yet.' : e.kind === 'nodoc' || e.kind === 'precond' ? 'Your own callsign is not registered on the server.' : why(e) };
+      return { ok: false, msg: e.kind === 'denied' ? 'Refused by the server — the PIN no longer matches, the person was added by someone else, or the new rules (people/{CALLSIGN}) are not published yet.' : e.kind === 'nodoc' || e.kind === 'precond' ? 'Your own callsign is not registered on the server.' : why(e) };
     }
   }
 
@@ -3275,7 +3276,7 @@ const CREW = (function () {
       await commit([pinDoc(cur, hash, n, 'exists'),
         { update: { name: base + 'config/roles', fields: { admins: arr(A), testpilots: arr(T), by: { stringValue: cur }, n: { stringValue: n } } }, updateTransforms: [{ fieldPath: 't', setToServerValue: 'REQUEST_TIME' }], currentDocument: { updateTime: d.updateTime } }]);
       await fl.refresh(true);
-      return { ok: true, msg: target + (role === 'admin' ? ' is now an administrator.' : role === 'tester' ? ' is now a test pilot.' : ' is now a normal pilot.') };
+      return { ok: true, msg: target + (role === 'admin' ? ' is now an Admin.' : role === 'tester' ? ' is now a Test pilot.' : ' is now a Pilot.') };
     } catch (e) {
       return { ok: false, msg: e.kind === 'denied' ? 'Refused by the server — you are not an administrator in the roles list, the PIN no longer matches, or the rules are not updated yet.' : e.kind === 'precond' ? 'The roles list was changed by someone else a moment ago — try again.' : e.kind === 'nodoc' || e.kind === 'nodb' ? 'The roles document does not exist yet — create config/roles in the Firebase console once.' : why(e) };
     }
@@ -3300,7 +3301,7 @@ const CREW = (function () {
     const L = entries();
     if (!L.length) { body.append(el('tr', null, el('td', { colspan: '4', class: 'crew-empty' }, 'No one on the list yet.'))); return; }
     L.forEach(r => {
-      const tag = r.cs === cur ? 'me' : r.src === 'local' ? 'device' : r.src === 'cloud' ? 'roster' : r.src === 'admin' ? 'added by admin' : r.src;
+      const tag = r.cs === cur ? 'me' : r.src === 'local' ? 'device' : r.src === 'cloud' ? 'roster' : r.src === 'admin' ? 'added' : r.src;
       body.append(el('tr', { class: r.cs === cur ? 'me' : '' },
         el('td', { class: 'cs' }, r.cs, r.nm ? el('small', { class: 'crew-nm' }, ' ' + r.nm) : null), el('td', { class: 'w' }, kgTxt(r.w)),
         el('td', { class: stale(r.t) ? 'old' : '' }, stale(r.t) && r.t ? ago(r.t) + ' ⚠' : ago(r.t)),
@@ -3331,7 +3332,7 @@ const CREW = (function () {
       const mk = (cs) => { const a = el('button', { class: 'btn sm', type: 'button' }, 'Reset PIN'), d = el('button', { class: 'btn sm', type: 'button' }, 'Delete'); sure(a, 'Reset PIN', () => act(cs(), 'pin')); sure(d, 'Delete', () => act(cs(), 'all')); return [a, d]; };
       const tb = el('tbody'); entries().filter(r => r.cs !== cur && r.src === 'cloud').forEach(r => { const [a, d] = mk(() => r.cs); tb.append(el('tr', null, el('td', { class: 'cs' }, r.cs), el('td', { class: 'w' }, kgTxt(r.w)), el('td', { class: 'tg' }, a, d))); });
       const [a2, d2] = mk(() => ac.value);
-      adm.append(el('h3', null, 'Administrator · ผู้ดูแลระบบ'), peopleBox(),
+      adm.append(el('h3', null, 'Admin'),
         el('p', { class: 'crew-fine' }, 'Reset PIN = the person registers again with a new PIN (weight stays until then). Delete = removes the callsign, its weight and all its synced data (cannot be undone). Use it for duplicate or abandoned registrations.'),
         el('div', { class: 'crew-adm-del' }, tb.children.length ? el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign', 'Weight', ''].map(x => el('th', null, x)))), tb) : el('p', { class: 'crew-fine' }, 'No one else on the roster.'),
           el('div', { class: 'crew-row' }, ac, a2, d2), amsg), rolesBox());
@@ -3345,30 +3346,31 @@ const CREW = (function () {
       L.forEach(([cs, v]) => {
         const ed = el('button', { class: 'btn sm', type: 'button', title: 'Edit · แก้ไข', onclick: () => { pc.value = cs; pn.value = v.nm || ''; pw.value = String(v.w); pw.focus(); } }, 'Edit'), x = el('button', { class: 'btn sm', type: 'button', title: 'Remove for everyone · ลบออกจากรายชื่อกลาง' }, '✕');
         x.onclick = () => { if (x.dataset.arm === '1') { clearTimeout(x._t); go(cs, 0, '', true); return; } x.dataset.arm = '1'; x.textContent = 'Sure?'; x._t = setTimeout(() => { x.dataset.arm = ''; x.textContent = '✕'; }, 4000); };
-        tb.append(el('tr', null, el('td', { class: 'cs' }, cs, v.nm ? el('small', { class: 'crew-nm' }, ' ' + v.nm) : null), el('td', { class: 'w' }, kgTxt(v.w)), el('td', { class: stale(v.t) ? 'old' : '' }, ago(v.t)), el('td', { class: 'tg' }, ed, x)));
+        tb.append(el('tr', null, el('td', { class: 'cs' }, cs, v.nm ? el('small', { class: 'crew-nm' }, ' ' + v.nm) : null), el('td', { class: 'w' }, kgTxt(v.w)), el('td', { class: stale(v.t) ? 'old' : '' }, ago(v.t)), el('td', { class: 'tg' }, ...(fl.isAdmin() || !v.by || v.by === cur ? [ed, x] : [el('small', { class: 'crew-nm' }, v.by)]))));
       });
       const sv = el('button', { class: 'btn sm pri', type: 'button', onclick: () => go(pc.value, parseFloat(String(pw.value).replace(',', '.')), pn.value, false) }, 'Save for everyone · บันทึกให้ทุกคนเห็น');
-      return el('div', { class: 'crew-people' }, el('h3', null, 'Instructors & visitors · ครูการบิน / ผู้ร่วมบิน'),
-        el('p', { class: 'crew-fine' }, 'Add the weight of someone who flies with you but has not registered, so everybody can pick them in Weight & Balance. Use a short callsign (A–Z, 0–9). If the person registers that callsign later, their own weight replaces yours. (A name is only a label.)'),
+      return el('div', { class: 'crew-people' }, el('h3', null, 'Add a pilot or passenger · เพิ่มนักบิน / ผู้ร่วมบิน'),
+        el('p', { class: 'crew-fine' }, 'Add someone who flies with you but has not registered (instructor, passenger): everybody sees them in the pilot roster and can pick them in Weight & Balance. Use a short callsign (A–Z, 0–9). If the person registers that callsign later, their own weight replaces yours. Only you or an Admin can change what you added. (A name is only a label.)'),
         L.length ? el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign · name', 'Weight', 'Updated', ''].map(z => el('th', null, z)))), tb) : el('p', { class: 'crew-fine' }, 'No one added yet.'),
         el('div', { class: 'crew-row' }, pc, pn, pw, sv), pm);
     };
+    const peopleHost = el('div', { class: 'crew-phost' }); const peopleDraw = () => peopleHost.replaceChildren(peopleBox());
     const rolesBox = () => {
       const rm = el('div', { class: 'crew-msg' }, aLastR ? aLastR.t : ''); if (aLastR) rm.className = 'crew-msg ' + aLastR.c;
       const run = async (cs, role) => { rm.className = 'crew-msg'; rm.textContent = 'Working…'; const r = await setRole(cs, role); aLastR = { c: r.ok ? 'ok' : 'bad', t: r.msg }; rm.className = 'crew-msg ' + aLastR.c; rm.textContent = r.msg; if (r.ok) redraw(); };
       const chip2 = (cs, role) => { const x = el('button', { class: 'btn sm', type: 'button', title: 'Remove this role · ถอดบทบาท' }, '✕'); if (cs === cur) x.hidden = true; x.onclick = () => { if (x.dataset.arm === '1') { clearTimeout(x._t); run(cs, 'pilot'); return; } x.dataset.arm = '1'; x.textContent = 'Sure?'; x._t = setTimeout(() => { x.dataset.arm = ''; x.textContent = '✕'; }, 4000); }; return el('span', { class: 'crew-rl' }, cs, ' ', x); };
       const rn = el('input', { class: 'crew-in sm', type: 'text', maxlength: '20', placeholder: 'Callsign', 'aria-label': 'Callsign to give a role' });
       ['keydown', 'keyup', 'keypress'].forEach(k => rn.addEventListener(k, e => e.stopPropagation()));
-      const sel = el('select', { class: 'crew-in sm', 'aria-label': 'Role' }, el('option', { value: 'tester' }, 'Test pilot · นักบินลองเครื่อง'), el('option', { value: 'admin' }, 'Administrator · แอดมิน'));
+      const sel = el('select', { class: 'crew-in sm', 'aria-label': 'Role' }, el('option', { value: 'tester' }, 'Test pilot'), el('option', { value: 'admin' }, 'Admin'), el('option', { value: 'pilot' }, 'Pilot (remove role)'));
       const add = el('button', { class: 'btn sm pri', type: 'button' }, 'Set role'); add.onclick = () => { const cs = norm(rn.value); if (sel.value === 'admin' && add.dataset.arm !== '1') { add.dataset.arm = '1'; add.textContent = 'Sure? · แน่ใจ?'; setTimeout(() => { add.dataset.arm = ''; add.textContent = 'Set role'; }, 4000); return; } add.dataset.arm = ''; add.textContent = 'Set role'; run(cs, sel.value); };
       const ad = fl.admins(), te = (fcache().testpilots || []);
-      return el('div', { class: 'crew-roles' }, el('h3', null, 'Roles · บทบาท'),
-        el('p', { class: 'crew-fine' }, 'Test pilots may change the aircraft empty weights. Administrators may also reset PINs, delete callsigns and change roles. Everyone else is a normal pilot.'),
-        el('div', { class: 'crew-rline' }, el('b', null, 'Administrators: '), ad.length ? ad.map(c2 => chip2(c2, 'admin')) : '—'),
-        el('div', { class: 'crew-rline' }, el('b', null, 'Test pilots: '), te.length ? te.map(c2 => chip2(c2, 'tester')) : '—'),
+      return el('div', { class: 'crew-roles' }, el('h3', null, 'Roles · Pilot / Test pilot / Admin'),
+        el('p', { class: 'crew-fine' }, 'Pilot = everyone who registers. Test pilots may also change the aircraft empty weights. Admins may also reset PINs, delete callsigns and change roles.'),
+        el('div', { class: 'crew-rline' }, el('b', null, 'Admin: '), ad.length ? ad.map(c2 => chip2(c2, 'admin')) : '—'),
+        el('div', { class: 'crew-rline' }, el('b', null, 'Test pilot: '), te.length ? te.map(c2 => chip2(c2, 'tester')) : '—'),
         el('div', { class: 'crew-row' }, rn, sel, add), rm);
     };
-    const redraw = () => { rows(body); stl(); syl(); admDraw(); chip.textContent = chipText(); };
+    const redraw = () => { rows(body); stl(); syl(); admDraw(); peopleDraw(); chip.textContent = chipText(); };
     const wasHere = redraw; listeners.push(wasHere);
     save.onclick = async () => {
       const kg = parseFloat(String(w.value).replace(',', '.')), p = pin ? pin.value.trim() : '';
@@ -3388,14 +3390,12 @@ const CREW = (function () {
         el('div', { class: 'crew-row' }, w, el('span', null, 'kg'), pin, save),
         el('p', { class: 'crew-fine' }, cfg() ? (needPin ? 'PIN: 4–8 digits — this device does not know it yet; enter the PIN of this callsign (or it becomes the PIN if the callsign is new).' : 'You are signed in with your PIN; saving updates the shared roster.') : 'No shared roster is configured, so your weight stays on this device.'),
         msg,
-        el('h3', null, 'Crew roster · รายชื่อลูกเรือ'),
+        el('h3', null, 'Pilot roster · รายชื่อนักบิน'),
         el('table', { class: 'crew-tb' }, el('thead', null, el('tr', null, ['Callsign', 'Weight', 'Updated', ''].map(x => el('th', null, x)))), body),
         el('div', { class: 'crew-row' }, st, el('button', { class: 'btn sm', type: 'button', onclick: () => refresh(true) }, '↻ Refresh')),
         el('h3', null, 'Sync across devices · ซิงก์ข้ามเครื่อง'),
-        el('p', { class: 'crew-fine' }, 'Everything you save here — courseware progress, missions, KML, Weight & Balance, instrument-panel and map settings — is kept encrypted with a key made from your PIN, so the same callsign + PIN on another phone or computer shows it too. Each callsign is separate. If both devices changed the same item, the later change wins (courseware progress is merged, nothing done is lost).'),
-        el('p', { class: 'crew-fine th' }, 'ข้อมูลที่บันทึกทั้งหมดของ callsign นี้ (ความก้าวหน้า courseware, ภารกิจ, KML, W&B, IFR, ตั้งค่าแผนที่) จะถูกเข้ารหัสด้วย PIN แล้วเก็บบนเซิร์ฟเวอร์ ใช้ callsign + PIN เดียวกันบนเครื่องอื่นก็เห็นข้อมูลเดียวกัน'),
         el('div', { class: 'crew-row' }, spin, sbtn), sst, smsg,
-        el('details', null, el('summary', null, 'Add a person on this device only (e.g. a passenger)'), el('div', { class: 'crew-row' }, lc, lw, add), lm),
+        peopleHost,
         adm,
         el('div', { class: 'crew-row end' }, el('button', { class: 'btn sm', type: 'button', onclick: signOut }, 'Change callsign · เปลี่ยน callsign'))));
     d.addEventListener('close', () => { const i = listeners.indexOf(wasHere); if (i >= 0) listeners.splice(i, 1); d.remove(); if (dlg === d) dlg = null; });
@@ -3405,7 +3405,7 @@ const CREW = (function () {
 
   /* ---------- roster picker for other modules (Weight & Balance) ---------- */
   function picker(onPick) {
-    const s = el('select', { class: 'crew-pick', 'aria-label': 'Fill the weight from the crew roster' });
+    const s = el('select', { class: 'crew-pick', 'aria-label': 'Fill the weight from the pilot roster' });
     const fill = () => {
       const L = entries(); s.replaceChildren(el('option', { value: '' }, L.length ? 'Callsign · pick from roster' : 'Callsign · roster is empty'));
       L.forEach(r => s.append(el('option', { value: r.cs }, r.cs + (r.nm ? ' (' + r.nm + ')' : '') + ' · ' + kgTxt(r.w) + (stale(r.t) ? ' ⚠ old' : ''))));

@@ -3,7 +3,7 @@ rules_version = '2';
 //   crew/{CALLSIGN}  : weight in kg (public read — that is the point: crew see each other's weight)
 //   pins/{CALLSIGN}  : SHA-256 of  "au23a|CALLSIGN|PIN"  — never readable by anyone
 //   fleet/{A/C no.}  : the aircraft empty-weight records (weight lb, arm in, W.B. date, remark) — public read; written ONLY by an editor
-//   people/{CALLSIGN}: weight (kg) + name of a person an ADMINISTRATOR added (instructor / visitor, not registered) — public read; written only by an admin with the PIN proof; a callsign that registers itself overrides it.
+//   people/{CALLSIGN}: weight (kg) + name of a person a registered PILOT added (instructor / passenger, not registered) — public read; written by any registered pilot with the PIN proof, changed later only by whoever added it or an admin; a callsign that registers itself overrides it.
 //   ud/{CALLSIGN}/k/*: that callsign's saved data, encrypted with a key made from the PIN (public read, ciphertext only); written only with the PIN proof
 //   config/roles    : {admins: ["CALLSIGN", ...], testpilots: ["CALLSIGN", ...]} — YOU create this document in the console (see docs/AIRCRAFT-LIST-SETUP.md); the app cannot write it.
 //                       (admins can change this document from inside the app; the first copy is created by you in the console.)
@@ -45,8 +45,8 @@ service cloud.firestore {
         && request.resource.data.n is string
         && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(cs)).data.n;
     }
-    // ---- people an ADMINISTRATOR adds (an instructor / visitor who flies with you but has not registered): shown to everybody in the crew picker of Weight & Balance ----
-    // written in the same commit as a re-write of the administrator's own pins record (nonce n); "removing" a person writes x:true (no deletes). 8 people per commit at most (2 rule reads each).
+    // ---- people a registered pilot adds (an instructor / passenger who flies with you but has not registered): shown to everybody in the crew picker of Weight & Balance ----
+    // written in the same commit as a re-write of the writer's own pins record (nonce n); "removing" a person writes x:true (no deletes). 8 people per commit at most (2 rule reads each).
     match /people/{cs} {
       allow read: if true;
       allow delete: if false;
@@ -57,7 +57,7 @@ service cloud.firestore {
         && (!('nm' in request.resource.data) || (request.resource.data.nm is string && request.resource.data.nm.size() <= 40))
         && (!('x' in request.resource.data) || request.resource.data.x is bool)
         && request.resource.data.by is string && okCs(request.resource.data.by)
-        && isAdmin(request.resource.data.by)
+        && (resource == null || resource.data.by == request.resource.data.by || isAdmin(request.resource.data.by))
         && request.resource.data.t == request.time
         && request.resource.data.n is string && request.resource.data.n.size() <= 40
         && request.resource.data.n == getAfter(/databases/$(database)/documents/pins/$(request.resource.data.by)).data.n;
