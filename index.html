@@ -2311,6 +2311,22 @@ svg.prp{width:100%;height:100%;display:block;background:#0a1220}
 .crew-rl{display:inline-flex;align-items:center;gap:2px;padding:1px 4px 1px 8px;border:1px solid var(--line,#1b2a39);border-radius:12px}
 .crew-rl .btn{padding:0 6px;min-height:20px}
 .crew-roles select.crew-in{width:auto;max-width:210px}
+/* ---- Windy forecast panel on the map ---- */
+.windy-ctl{background:#0e1822ee;border:1px solid var(--line2);border-radius:10px;overflow:hidden;color:var(--ink)}
+.windy-ctl .windy-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:var(--ink)}
+.windy-ctl .windy-btn.on{background:#ffb02022;color:var(--amber)}
+.windy-pane{position:absolute;z-index:1100;top:calc(var(--top) + var(--ry));right:calc(var(--rx) + 48px);bottom:44px;width:min(52%,720px);display:flex;flex-direction:column;background:#0b1424f2;border:1px solid var(--line2);border-radius:10px;overflow:hidden;box-shadow:0 8px 30px #0008}
+.windy-pane[hidden]{display:none}
+.windy-pane.big{left:var(--lx);width:auto}
+.windy-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--line2);font-size:12px}
+.windy-bar b{margin-right:2px}
+.windy-bar select{background:#0e1822;color:var(--ink);border:1px solid var(--line2);border-radius:6px;padding:3px 4px;font-size:12px;max-width:190px}
+.windy-view{position:relative;flex:1;min-height:200px}
+.windy-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#0b1424}
+.windy-note{padding:4px 8px;font-size:11px;color:var(--dim,#7d93a8);border-top:1px solid var(--line2)}
+.windy-note.bad{color:#ffb020}
+.windy-note:empty{display:none}
+@media (max-width:760px){.windy-pane,.windy-pane.big{left:6px;right:6px;width:auto;top:calc(var(--top) + 6px);bottom:36px}}
 
 </style>
 </head>
@@ -29565,6 +29581,100 @@ const AERO = (function () {
 
   return { register, SYM, symOf, esc2, popupFor, KIND, persistOn, S, SEED_PTS, SEED_AS, G, LAYERS, oaip, addToRoute, routeEditor, importText, clearUser, loadRain, drawPts, drawAs, OPENAIP_TILE_URL, getRain: () => rain };
 }());
+
+;
+window.WINDY_PAGE="<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Windy forecast</title>\n<style>html,body,#windy{margin:0;width:100%;height:100%;background:#0b1424;color:#9fb3c8;font:13px system-ui,sans-serif}#msg{position:absolute;left:12px;top:12px;z-index:5}</style></head>\n<body><div id=\"windy\"></div>\n<script>\n/* The Windy library keeps a lot of state in localStorage. This page shares its origin with the planner, so give the library a private in-memory store: nothing of Windy lands in (or is read from) the planner's saved data / sync. */\n(function () { var d = {}, m = { getItem: function (k) { return Object.prototype.hasOwnProperty.call(d, k) ? d[k] : null; }, setItem: function (k, v) { d[String(k)] = String(v); }, removeItem: function (k) { delete d[k]; }, clear: function () { d = {}; }, key: function (i) { return Object.keys(d)[i] || null; } };\n  Object.defineProperty(m, 'length', { get: function () { return Object.keys(d).length; } });\n  try { Object.defineProperty(window, 'localStorage', { value: m, configurable: true }); window.__memLS = 1; } catch (e) { /* the library then uses the real one */ } })();\n<\/script><div id=\"msg\">Loading Windy…</div>\n<script>\n/* Windy Map Forecast API v4 in its own page, so its bundled Leaflet cannot clash with the planner's Leaflet. Talks to the planner by postMessage only. */\n(function () {\n  var q = new URLSearchParams(window.__Q || location.search), api = null, queue = [], P = window.parent;\n  function say(m) { m.windy = 1; try { P.postMessage(m, '*'); } catch (e) { /* ignore */ } }\n  function num(v, d) { v = parseFloat(v); return isFinite(v) ? v : d; }\n  function apply(m) {\n    if (!api) { queue.push(m); return; }\n    try {\n      if (m.overlay) api.store.set('overlay', m.overlay);\n      if (m.level) api.store.set('level', m.level);\n      if (isFinite(m.lat) && isFinite(m.lon)) api.map.setView([m.lat, m.lon], isFinite(m.zoom) ? m.zoom : api.map.getZoom());\n    } catch (e) { say({ t: 'error', why: String(e && e.message || e) }); }\n  }\n  window.addEventListener('message', function (ev) { var m = ev.data; if (ev.source === P && m && m.windy === 1 && m.t === 'set') apply(m); });\n  say({ t: 'hello' });\n  var s = document.createElement('script');\n  s.src = 'https://api.windy.com/assets/map-forecast/libBoot.js';\n  s.onerror = function () { say({ t: 'fail', why: 'script' }); };\n  s.onload = function () {\n    if (typeof windyInit !== 'function') { say({ t: 'fail', why: 'noinit' }); return; }\n    try {\n      windyInit({ key: '__WINDY_KEY__', lat: num(q.get('lat'), 13), lon: num(q.get('lon'), 101), zoom: Math.max(3, Math.min(18, num(q.get('z'), 6))) }, function (a) {\n        if (!a || !a.map || !a.store) { say({ t: 'fail', why: 'api' }); return; }\n        api = a; var m = document.getElementById('msg'); if (m) m.remove();\n        a.map.on('moveend', function () { var c = a.map.getCenter(); say({ t: 'view', lat: c.lat, lon: c.lng, zoom: a.map.getZoom() }); });\n        var al = {}; try { al = { overlays: a.store.getAllowed('overlay'), levels: a.store.getAllowed('level') }; } catch (e) { /* ignore */ }\n        say({ t: 'ready', overlays: al.overlays, levels: al.levels }); queue.splice(0).forEach(apply);\n      });\n    } catch (e) { say({ t: 'fail', why: String(e && e.message || e) }); }\n  };\n  document.head.appendChild(s);\n  setTimeout(function () { if (!api) say({ t: 'fail', why: 'timeout' }); }, 20000);\n})();\n<\/script></body></html>\n";
+;
+/* ==========================================================================
+   WINDY FORECAST on the map (button under the layer buttons, top right)
+   ► The key below is a Windy "Map Forecast API" key (api.windy.com/keys). Like the OpenAIP key it is visible to anybody who opens the page source:
+     in the Windy key page restrict it to your site (siravitch.github.io) if the option is offered, and replace it there if it is ever abused.
+   How it works: the Windy API brings its own copy of Leaflet, which would clash with the planner's, so it runs in an <iframe> (windy.html next to this page when served over
+   http(s), otherwise the same page inline) and is driven by postMessage: overlay, level (≈ altitude), "match my map" and "use this view". If the key/API cannot load
+   (offline, blocked, key refused) the panel falls back to Windy's keyless embed (embed.windy.com: same weather, fewer controls, no time-slider sync).
+   Forecast only — not an official meteorological briefing; use the squadron's approved weather source for flight planning.
+   ========================================================================== */
+const WINDY_API_KEY = '7E8AvZUBhbc7MOFSqGpSyioQD0RDoIpZ';
+/* Windy's "Testing" keys are free but limited (fewer layers / models) and, per Windy's conditions, for development only. A public squadron site needs the Professional plan (api.windy.com);
+   until then set this to false to use only the keyless embed (embed.windy.com), which is Windy's own widget for websites. */
+const WINDY_USE_API = true;
+const WINDY = (function () {
+  const LS = 'au23a.windy.v1';
+  const OVERLAYS = [['wind', 'Wind · ลม'], ['gust', 'Gusts · ลมกระโชก'], ['rain', 'Rain / thunder · ฝน-พายุ'], ['clouds', 'Clouds · เมฆ'], ['cbase', 'Cloud base · ฐานเมฆ'], ['cloudtop', 'Cloud tops · ยอดเมฆ'], ['visibility', 'Visibility · ทัศนวิสัย'], ['cape', 'CAPE · ความไม่เสถียร'], ['temp', 'Temperature · อุณหภูมิ'], ['pressure', 'Pressure · ความกดอากาศ'], ['waves', 'Waves · คลื่น']];
+  const LEVELS = [['surface', 'Surface · ผิว'], ['925h', '925 hPa ≈ 2,500 ft'], ['850h', '850 hPa ≈ 5,000 ft'], ['700h', '700 hPa ≈ 10,000 ft'], ['500h', '500 hPa ≈ 18,000 ft'], ['300h', '300 hPa ≈ 30,000 ft']];
+  const st = (() => { let o = {}; try { o = JSON.parse(localStorage.getItem(LS) || '{}'); } catch (e) { /* ignore */ } return { overlay: OVERLAYS.some(x => x[0] === o.overlay) ? o.overlay : 'wind', level: LEVELS.some(x => x[0] === o.level) ? o.level : 'surface', big: !!o.big, open: false }; })();
+  const save = () => { try { localStorage.setItem(LS, JSON.stringify({ overlay: st.overlay, level: st.level, big: st.big })); } catch (e) { /* ignore */ } };
+  const hh = (tag, attrs, ...kids) => { const e = document.createElement(tag); Object.keys(attrs || {}).forEach(k => { if (k === 'class') e.className = attrs[k]; else if (k.startsWith('on')) e[k] = attrs[k]; else if (attrs[k] !== false && attrs[k] != null) e.setAttribute(k, attrs[k]); }); kids.flat().forEach(c => { if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c))); }); return e; };
+  const clampZ = z => Math.max(3, Math.min(18, Math.round(z)));
+  let pane = null, frame = null, mode = 'idle', note = null, last = null, helloT = 0, readyT = 0, selO = null, selL = null;
+
+  const here = () => { const c = map.getCenter(); return { lat: +c.lat.toFixed(4), lon: +c.lng.toFixed(4), zoom: clampZ(map.getZoom()) }; };
+  const embedUrl = v => 'https://embed.windy.com/embed2.html?lat=' + v.lat + '&lon=' + v.lon + '&detailLat=' + v.lat + '&detailLon=' + v.lon + '&width=900&height=600&zoom=' + v.zoom + '&level=' + st.level + '&overlay=' + st.overlay +
+    '&product=ecmwf&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=kt&metricTemp=%C2%B0C&radarRange=-1';
+  const pageHtml = () => (typeof window.WINDY_PAGE === 'string' ? window.WINDY_PAGE : '');
+  const setNote = (t, bad) => { if (note) { note.textContent = t || ''; note.className = 'windy-note' + (bad ? ' bad' : ''); } };
+
+  function clearTimers() { clearTimeout(helloT); clearTimeout(readyT); }
+  function mount(kind) {      // kind: 'file' (windy.html over http/https) | 'inline' (srcdoc) | 'embed' (keyless)
+    clearTimers(); const v = here(); last = v;
+    if (frame) frame.remove(); frame = hh('iframe', { class: 'windy-frame', title: 'Windy forecast', allow: 'geolocation', referrerpolicy: 'strict-origin-when-cross-origin' }); pane.querySelector('.windy-view').append(frame);
+    mode = kind;
+    if (kind === 'embed') { frame.src = embedUrl(v); setNote('Basic Windy view (no key). Overlay and level follow the lists above; “Match my map” reloads it at the map centre.', false); return; }
+    setNote('Loading Windy…', false);
+    if (kind === 'file') {
+      frame.src = 'windy.html?lat=' + v.lat + '&lon=' + v.lon + '&z=' + v.zoom;
+      helloT = setTimeout(() => { if (mode === 'file') mount('inline'); }, 5000);     // no page there (not published yet / opened as a file) → same page inline
+    } else {
+      const html = pageHtml(); if (!html) { mount('embed'); return; }
+      const shim = '<script>window.__Q=' + JSON.stringify('?lat=' + v.lat + '&lon=' + v.lon + '&z=' + v.zoom) + ';<\/script>';
+      frame.srcdoc = html.replace('__WINDY_KEY__', WINDY_API_KEY).replace('<body>', '<body>' + shim);
+      readyT = setTimeout(() => { if (mode === 'inline') mount('embed'); }, 25000);
+    }
+  }
+  // only offer what this key / plan allows (a Testing key has fewer layers); Windy answers store.getAllowed()
+  function allow(ov, lv) {
+    const fit = (sel, list, pref) => { if (!Array.isArray(list) || !list.length) return; let any = false; [...sel.options].forEach(o => { const okk = list.indexOf(o.value) >= 0; o.hidden = !okk; o.disabled = !okk; any = any || okk; }); if (!any) { [...sel.options].forEach(o => { o.hidden = false; o.disabled = false; }); return; } if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) { sel.value = list.indexOf(pref) >= 0 ? pref : [...sel.options].find(o => !o.disabled).value; sel.dispatchEvent(new Event('change')); } };
+    fit(selO, ov, 'wind'); fit(selL, lv, 'surface');
+  }
+  function send(extra) { if (!frame || !frame.contentWindow || mode === 'embed') return; frame.contentWindow.postMessage(Object.assign({ windy: 1, t: 'set', overlay: st.overlay, level: st.level }, extra || {}), '*'); }
+
+  window.addEventListener('message', ev => {
+    const m = ev.data; if (!m || m.windy !== 1 || !frame || ev.source !== frame.contentWindow) return;
+    if (m.t === 'hello') { clearTimeout(helloT); readyT = setTimeout(() => { if (mode === 'file') mount('inline'); }, 25000); }
+    else if (m.t === 'ready') { clearTimers(); allow(m.overlays, m.levels); setNote('Windy forecast · drag the timeline at the bottom for the forecast hour · click the map for the value at a point.', false); send(); }
+    else if (m.t === 'fail') { clearTimers(); if (mode === 'file') mount('inline'); else if (mode === 'inline') { mount('embed'); setNote('Windy key/API could not load (' + (m.why || '?') + ') — showing the basic Windy view instead.', true); } }
+    else if (m.t === 'view') last = { lat: m.lat, lon: m.lon, zoom: m.zoom };
+  });
+
+  function open(on) {
+    st.open = on === undefined ? !st.open : on; pane.hidden = !st.open; btn.classList.toggle('on', st.open);
+    if (st.open && !frame) mount(!WINDY_USE_API ? 'embed' : /^https?:$/.test(location.protocol) ? 'file' : 'inline');
+  }
+  function build() {
+    note = hh('div', { class: 'windy-note' });
+    selO = hh('select', { 'aria-label': 'Windy layer', 'data-windy': 'overlay', onchange: () => { st.overlay = selO.value; save(); if (mode === 'embed') mount('embed'); else send(); } }, OVERLAYS.map(o => hh('option', { value: o[0] }, o[1])));
+    selL = hh('select', { 'aria-label': 'Windy level', 'data-windy': 'level', title: 'Altitude of the wind / temperature layer (standard atmosphere, approximate)', onchange: () => { st.level = selL.value; save(); if (mode === 'embed') mount('embed'); else send(); } }, LEVELS.map(o => hh('option', { value: o[0] }, o[1])));
+    selO.value = st.overlay; selL.value = st.level;
+    const match = hh('button', { type: 'button', class: 'btn sm', 'data-windy': 'match', title: 'Move the forecast to the centre of my map', onclick: () => { const v = here(); if (mode === 'embed') mount('embed'); else send(v); } }, 'Match my map');
+    const use = hh('button', { type: 'button', class: 'btn sm', 'data-windy': 'use', title: 'Move my map to what the forecast is showing', onclick: () => { if (last) map.setView([last.lat, last.lon], Math.max(map.getMinZoom ? map.getMinZoom() : 2, Math.min(last.zoom, map.getMaxZoom ? map.getMaxZoom() : 19))); } }, 'Use this view');
+    const size = hh('button', { type: 'button', class: 'btn sm', 'data-windy': 'size', title: 'Compact / large', onclick: () => { st.big = !st.big; pane.classList.toggle('big', st.big); save(); } }, '⤢');
+    const close = hh('button', { type: 'button', class: 'btn sm', 'data-windy': 'close', 'aria-label': 'Close Windy', onclick: () => open(false) }, '✕');
+    pane = hh('div', { class: 'windy-pane' + (st.big ? ' big' : ''), hidden: '' }, hh('div', { class: 'windy-bar' }, hh('b', null, 'Windy'), selO, selL, match, use, size, close), hh('div', { class: 'windy-view' }), note);
+    map.getContainer().append(pane); L.DomEvent.disableClickPropagation(pane); L.DomEvent.disableScrollPropagation(pane);
+    ['keydown', 'keyup', 'keypress'].forEach(k => pane.addEventListener(k, e => e.stopPropagation()));
+  }
+  let btn = null;
+  const ctl = L.control({ position: 'topright' });
+  ctl.onAdd = () => {
+    const box = hh('div', { class: 'windy-ctl leaflet-bar' });
+    btn = hh('a', { href: '#', role: 'button', title: 'Windy weather forecast (wind, clouds, rain, temperature, pressure — by altitude)', 'aria-label': 'Windy forecast', class: 'windy-btn', 'data-windy': 'btn' });
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8h10a3 3 0 1 0-3-3"/><path d="M3 12h15a3 3 0 1 1-3 3"/><path d="M3 16h7a2.5 2.5 0 1 1-2.5 2.5"/></svg>';
+    L.DomEvent.on(btn, 'click', ev => { L.DomEvent.stop(ev); open(); });
+    box.append(btn); L.DomEvent.disableClickPropagation(box); return box;
+  };
+  ctl.addTo(map); build();
+  return { open, state: st, mode: () => mode, pane: () => pane };
+})();
 
 ;
 /* ==========================================================================
