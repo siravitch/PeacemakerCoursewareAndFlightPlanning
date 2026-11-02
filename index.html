@@ -2559,6 +2559,23 @@ html[data-brs-show="1"] body{overflow:hidden}
 .wxl-rd{color:#cfe3f5}.wxl-note{color:var(--dim,#7d93a8);font-size:11px;min-height:14px}.wxl-note.bad{color:#ff9a8a}.wxl-fine{color:var(--dim,#7d93a8);font-size:10.5px}
 @media(max-width:640px){.wxl-bar{width:calc(100% - 20px);bottom:70px}}
 
+/* ===== Briefing 5.3 bird & wildlife table + map ===== */
+.brs-bh{position:absolute;left:70px;right:70px;top:114px;font-size:26px;font-weight:700;color:#0b1624;text-align:left}
+.brs-body.bird{top:168px}
+.brs-body.bird .brs-split.two{grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr)}
+.brs-bt th,.brs-bt td{white-space:nowrap}
+.brs-bt{width:100%;border-collapse:collapse;font-size:.78em;background:#ffffffd8}
+.brs-bt th,.brs-bt td{padding:.22em .5em;border-bottom:1px solid #cfd8e1;text-align:center}
+.brs-bt thead th{border-bottom:2px solid #0b1624;font-weight:700}
+.brs-bt tbody tr:nth-child(odd){background:#eef2f6cc}
+.brs-bt td.rk{text-align:left;white-space:nowrap}
+.brs-bt i.dot,.brs-bsub i.dot{display:inline-block;width:.62em;height:.62em;border-radius:50%;margin-right:.4em;vertical-align:middle}
+.brs-bsub{font-size:.62em;color:#33475b;margin:.2em 0 .35em}
+.brs-bmc{min-height:0;overflow:hidden;display:flex;justify-content:center;align-items:flex-start}
+.brs-bmap{width:100%;height:auto;max-height:480px;display:block;border:1px solid #c8d3de;border-radius:4px;background:#f4f7fa}
+.brs-brow{display:grid;grid-template-columns:minmax(0,1.7fr) 74px 50px 50px minmax(0,1.4fr) 34px;gap:6px;margin-bottom:6px}
+@media(max-width:700px){.brs-brow{grid-template-columns:1fr 1fr}}
+
 </style>
 </head>
 <body class="m-0 overflow-hidden bg-tac-bg font-tac text-slate-200">
@@ -29905,7 +29922,8 @@ const BRIEF_SLIDES = function (C) {
     D0.push({ id: 'prim', name: '4.1 PRIMARY / ALTERNATE MISSION', ed: edPrim, draw: drawPrim });
     D0.push({ id: 'obj', name: '4.2 OBJECTIVE', ed: edObj, draw: drawObj });
     D0.push({ id: 'ovw', name: '4.3 MISSION OVERVIEW', ed: edOvw, draw: drawOvw });
-    ['prm1', 'prm3', 'prm4', 'prm5'].forEach(k => D0.push(txtSlide(TXT[k])));
+    D0.push(txtSlide(TXT.prm1)); D0.push({ id: 'prm3', name: '5. PREMISSION REMARK — 5.3 BIRD AND OTHER WILD LIFE', ed: (p, rd) => edBird(p, TXT.prm3, rd), draw: st => drawBird(st, TXT.prm3) });
+    ['prm4', 'prm5'].forEach(k => D0.push(txtSlide(TXT[k])));
     D0.push({ id: 'mc1', name: '6.1 MISSION CARD · FRONT', ed: edMc1, draw: drawMc1 });
     D0.push({ id: 'mc2', name: '6.2 MISSION CARD · W&B / PERFORMANCE', ed: edMc2, draw: drawMc2 });
     D0.push({ id: 'mc3', name: '6.3 MISSION CARD · NOTE / REMARK', ed: edMc3, draw: drawMc3 });
@@ -30044,6 +30062,114 @@ const BRIEF_SLIDES = function (C) {
         h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { S.prof = PROF0.map(x => Object.assign({}, x)); save(); draw(); rd(); } }, 'ตัวอย่างตั้งต้น')]),
       field('หมายเหตุใต้กราฟ (บรรทัดละข้อ)', ta(S.txt.ovw || '', v => { S.txt.ovw = v; }, '', rd)),
       E('brs-fine', 'p', 'ใต้กราฟแสดงสรุปเส้นทางจากแท็บ Navigation อัตโนมัติ (ถ้ามี)'));
+  }
+  /* ---- 5.3 bird & wildlife : table + map of the RTAF Bird Map (birdmap.rtaf.mi.th), live pull or pasted ---- */
+  const BIRD_API = 'https://birdmap.rtaf.mi.th/api/';
+  const RISKS = [['STOP & ALERT', '#dc2f2f'], ['RAPID RESPONSE', '#f26a1b'], ['DETER & OBSERVE', '#f2b624']];
+  const THM = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'], THD = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+  const bird = () => S.bird || (S.bird = { unit: 'กองบิน 5', days: 7, rows: [], at: 0, src: '', lat: null, lon: null });
+  let birdMsg = '';
+  const normRisk = x => { const u = String(x || '').toUpperCase().replace(/\s+/g, ' ').replace(/\s*&\s*/g, ' & '); return (RISKS.find(r => u.indexOf(r[0]) >= 0) || [''])[0]; };
+  const riskCol = r => (RISKS.find(x => x[0] === r) || [0, '#8a97a5'])[1];
+  const hueRisk = c => {                                          // risk name from a colour when the server sends only risk_color
+    let m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || '').trim()); if (!m) return '';
+    let x = m[1].length === 3 ? m[1].replace(/./g, q => q + q) : m[1]; const r = parseInt(x.slice(0, 2), 16) / 255, g = parseInt(x.slice(2, 4), 16) / 255, b = parseInt(x.slice(4), 16) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx - mn < 0.2) return ''; let hu = mx === r ? ((g - b) / (mx - mn)) * 60 : mx === g ? (2 + (b - r) / (mx - mn)) * 60 : (4 + (r - g) / (mx - mn)) * 60; hu = (hu + 360) % 360;
+    return hu < 15 || hu > 345 ? RISKS[0][0] : hu < 40 ? RISKS[1][0] : hu < 70 ? RISKS[2][0] : '';
+  };
+  const bMs = r => Date.parse(r.t + ':00+07:00');                  // times of the site are Thailand local time
+  const fmtBird = r => { const ms = bMs(r), d = new Date(ms + 7 * 3600000); return THD[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + THM[d.getUTCMonth()] + String(d.getUTCFullYear() + 543).slice(2) + ' ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()); };
+  const birdRows = () => { const B = bird(), n = now(), lim = Math.floor((n + 7 * 3600000) / 86400000) * 86400000 - 7 * 3600000 - (+B.days || 7) * 86400000;   // whole Thai calendar days, like the site (day_past <= N)
+    return B.rows.filter(r => { const t = bMs(r); return fin(t) && t >= lim && t <= n + 86400000; }).sort((a, b) => bMs(b) - bMs(a)); };
+  const parseBirdTable = txt => {                                   // lines copied from the table of the site: "จ. 2 พ.ย.69 09:10  200  4 x 4  STOP & ALERT"
+    const mon = THM.map(m => m.replace(/\./g, '\\.')).join('|'), re = new RegExp('(\\d{1,2})\\s*(' + mon + ')\\s*(\\d{2,4})\\s+(\\d{1,2}):(\\d{2})\\s+(\\d+)\\s+(\\d)\\s*[x×X]\\s*(\\d+)[^A-Za-z\\d]*(STOP\\s*&\\s*ALERT|RAPID\\s*RESPONSE|DETER\\s*&\\s*OBSERVE)', 'i'), out = [];
+    String(txt).split(/\r?\n/).forEach(l => {
+      const m = re.exec(l.replace(/\s+/g, ' ')); if (!m) return; let y = +m[3]; if (y < 100) y += 2500; if (y > 2400) y -= 543;
+      out.push({ t: y + '-' + p2(THM.indexOf(m[2]) + 1) + '-' + p2(m[1]) + 'T' + p2(m[4]) + ':' + m[5], ft: +m[6], sz: +m[7], n: +m[8], risk: normRisk(m[9]) });
+    });
+    return out;
+  };
+  const arr = x => Array.isArray(x) ? x : (x && (x.results || x.data || x.items)) || [];
+  const birdFromJson = (data, units) => {                          // BirdData records of the site → rows of this slide (only this unit)
+    const L = arr(data), U = arr(units), uni = U.find(u => Object.values(u).some(v => typeof v === 'string' && /กองบิน\s*[5๕](\D|$)/.test(v)));
+    let how = 'ไม่ได้กรองตามกองบิน (ไม่มีรายชื่อหน่วย)', keep = () => true, lat = null, lon = null;
+    if (U.length && !uni) throw new Error('ไม่พบ “กองบิน 5” ในรายชื่อหน่วยของเว็บ');
+    if (uni) {
+      lat = +uni.latitude; lon = +(uni.longtitude != null ? uni.longtitude : uni.longitude);
+      const key = ['unit', 'unit_id', 'wing', 'wing_id', 'airfield', 'airfield_id', 'unit_no'].find(k => L[0] && L[0][k] != null);
+      if (key) { keep = r => String(r[key] && r[key].id != null ? r[key].id : r[key]) === String(uni.id); how = 'กรองด้วยฟิลด์ ' + key; }
+      else if (fin(lat) && fin(lon)) { keep = r => hav(lat, lon, +r.latitude, +r.longtitude) <= 8000; how = 'กรองตามระยะ ≤ 8 กม. จากสนาม (เว็บไม่ระบุกองบินในแต่ละรายการ)'; }
+    }
+    const rows = [];
+    L.forEach(r => {
+      if (!r || !r.date_found || !keep(r)) return;
+      const rk = ['risk', 'risk_name', 'risk_level', 'risk_text', 'risk_desc'].map(k => normRisk(r[k])).find(Boolean) || hueRisk(r.risk_color);
+      rows.push({ t: String(r.date_found).slice(0, 10) + 'T' + String(r.time_found || '00:00').slice(0, 5), ft: +(r.attitude != null ? r.attitude : r.altitude != null ? r.altitude : r.height) || 0, sz: +r.bird_size || 0, n: +r.num_bird || 0, risk: rk, c: typeof r.risk_color === 'string' ? r.risk_color : '', la: fin(+r.latitude) && r.latitude != null ? +r.latitude : null, lo: fin(+r.longtitude) && r.longtitude != null ? +r.longtitude : null });
+    });
+    return { rows, how, lat: fin(lat) ? lat : null, lon: fin(lon) ? lon : null };
+  };
+  const hav = (a, b, c, d) => { const R = 6371000, f = x => x * Math.PI / 180, dp = f(c - a), dl = f(d - b), q = Math.sin(dp / 2) ** 2 + Math.cos(f(a)) * Math.cos(f(c)) * Math.sin(dl / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(q)); };
+  async function birdFetch() {
+    const g = u => fetch(BIRD_API + u, { mode: 'cors', cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    const [d, u] = await Promise.all([g('BirdData/'), g('Unit/')]); return birdFromJson(d, u);
+  }
+  const birdMap = (rows, B) => {                                    // plan view (north up) of the sightings around the airfield, no tiles needed
+    const pts = rows.filter(r => r.la != null && r.lo != null); if (!pts.length) return null;
+    const la0 = B.lat != null ? B.lat : pts.reduce((a, r) => a + r.la, 0) / pts.length, lo0 = B.lon != null ? B.lon : pts.reduce((a, r) => a + r.lo, 0) / pts.length, kx = Math.cos(la0 * Math.PI / 180) * 111320, ky = 110540;
+    const xy = pts.map(r => [(r.lo - lo0) * kx, -(r.la - la0) * ky]), far = Math.max.apply(null, xy.map(q => Math.hypot(q[0], q[1])).concat(300)), steps = [500, 1000, 2000, 3000, 5000, 10000, 20000], R = steps.find(v => v >= far * 1.1) || Math.ceil(far * 1.1 / 1000) * 1000, W = 520, c = W / 2, k = (c - 24) / R, NS = 'http://www.w3.org/2000/svg';
+    const el = (t, a, tx) => { const e = document.createElementNS(NS, t); Object.keys(a || {}).forEach(q => e.setAttribute(q, a[q])); if (tx != null) e.textContent = tx; return e; };
+    const sv = el('svg', { viewBox: '0 0 ' + W + ' ' + W, class: 'brs-bmap', role: 'img', 'aria-label': 'แผนที่จุดพบนก' });
+    [1, 0.5].forEach(f => { sv.append(el('circle', { cx: c, cy: c, r: R * f * k, fill: 'none', stroke: '#b7c4d1', 'stroke-width': 1.5, 'stroke-dasharray': '5 5' })); sv.append(el('text', { x: c + R * f * k * 0.72 + 4, y: c - R * f * k * 0.72 - 2, 'font-size': 15, fill: '#4a5b6c' }, (R * f >= 1000 ? (R * f / 1000) + ' km' : (R * f) + ' m'))); });
+    sv.append(el('line', { x1: c, y1: 8, x2: c, y2: W - 8, stroke: '#d3dce5' }), el('line', { x1: 8, y1: c, x2: W - 8, y2: c, stroke: '#d3dce5' }), el('text', { x: c - 6, y: 20, 'font-size': 16, 'font-weight': 700, fill: '#26384a' }, 'N'));
+    xy.forEach((q, i) => sv.append(el('circle', { cx: c + q[0] * k, cy: c + q[1] * k, r: 9, fill: pts[i].c || riskCol(pts[i].risk), stroke: '#fff', 'stroke-width': 2, 'fill-opacity': .92 })));
+    sv.append(el('path', { d: 'M' + c + ' ' + (c - 15) + ' L' + (c + 11) + ' ' + (c + 9) + ' L' + c + ' ' + (c + 3) + ' L' + (c - 11) + ' ' + (c + 9) + ' Z', fill: '#1b78b8', stroke: '#fff', 'stroke-width': 2 }));
+    return sv;
+  };
+  function drawBird(st, d) {
+    const B = bird(), rows = birdRows(), hid = B.rows.length - rows.length, notes = String(txtOf(d)).split('\n').slice(1).filter(l => l.trim()).join('\n'), pp = pics(d.id), mp = birdMap(rows, B);
+    const sum = RISKS.map(r => [r, rows.filter(x => x.risk === r[0]).length]).filter(q => q[1]);
+    const fm = ms => { const t = new Date(ms + 7 * 3600000); return t.getUTCDate() + ' ' + THM[t.getUTCMonth()] + ' ' + String(t.getUTCFullYear() + 543).slice(2) + ' ' + p2(t.getUTCHours()) + ':' + p2(t.getUTCMinutes()); };
+    const sub = (B.unit || '') + ' · ย้อนหลัง ' + (+B.days || 7) + ' วัน · ' + rows.length + ' รายการ' + (B.at ? ' · ข้อมูล ณ ' + fm(B.at) + (B.src === 'fetch' ? ' (ดึงจาก birdmap.rtaf.mi.th)' : B.src === 'paste' ? ' (ข้อมูลที่วางไว้)' : '') : '');
+    const tbl = rows.length ? E('brs-bt', 'table', [E('', 'thead', E('', 'tr', ['วันที่', 'ความสูง', 'ขนาด x จำนวน', 'ความเสี่ยง'].map(x => E('', 'th', x)))),
+      E('', 'tbody', rows.slice(0, 12).map(r => E('', 'tr', [E('', 'td', fmtBird(r)), E('', 'td', String(r.ft)), E('', 'td', r.sz + ' x ' + r.n), E('rk', 'td', [h('i', { class: 'dot', style: 'background:' + (r.c || riskCol(r.risk)) }), r.risk || '-'])])))]) : null;
+    const left = E('brs-col', 'div', [E('brs-bsub', 'div', sub), tbl || E('brs-empty', 'div', B.rows.length ? 'ไม่มีรายการในช่วงที่เลือก (ซ่อน ' + hid + ' รายการที่เก่ากว่า)' : 'ยังไม่มีข้อมูลนก — กด “ดึงจาก birdmap” หรือวางข้อมูลในช่องแก้ไข'),
+      rows.length > 12 ? E('brs-bsub', 'div', '… และอีก ' + (rows.length - 12) + ' รายการ') : null, sum.length ? E('brs-bsub', 'div', sum.map(q => [h('i', { class: 'dot', style: 'background:' + q[0][1] }), q[0][0] + ' ' + q[1] + '   ']).flat()) : null, notes ? textBlocks(notes) : null]);
+    const right = mp ? E('brs-col brs-bmc', 'div', mp) : pp;
+    const body = E('brs-body', 'div'); body.append(right ? split(left, right) : left);
+    st.append(head(d.no, d.title), E('brs-bh', 'div', '5.3 BIRD AND OTHER WILD LIFE CONDITION'), body); body.classList.add('bird');
+  }
+  function edBird(p, d, rd) {
+    const B = bird(), ta2 = nokeys(h('textarea', { class: 'brs-in', rows: 5, placeholder: 'วางตารางที่ก๊อปจากเว็บ (วันที่ ความสูง ขนาด x จำนวน ความเสี่ยง) หรือข้อความ JSON จาก /api/BirdData/' })), msg = E('brs-fine bird-msg', 'p', birdMsg);
+    const say = t => { birdMsg = t; msg.textContent = t; };
+    const sel = h('select', { class: 'brs-in sm', 'aria-label': 'ช่วงเวลา', onchange: ev => { B.days = +ev.target.value; save(); rd(); } }, [3, 7, 14, 30].map(n => h('option', { value: n, selected: (+B.days || 7) === n ? true : null }, n === 14 ? '2 สัปดาห์' : n === 30 ? '1 เดือน' : n + ' วัน')));
+    const fetchBtn = h('button', { type: 'button', class: 'btn sm', 'data-bird': 'fetch', onclick: async () => {
+      fetchBtn.disabled = true; say('กำลังดึงข้อมูลจาก birdmap.rtaf.mi.th …');
+      try { const r = await birdFetch(); B.rows = r.rows; B.at = now(); B.src = 'fetch'; B.lat = r.lat; B.lon = r.lon; save(); say('ดึงแล้ว ' + r.rows.length + ' รายการ · ' + r.how); rd(true); }
+      catch (e) { say('ดึงไม่ได้ (' + (e && e.message || e) + ') — เว็บ birdmap อาจไม่อนุญาตให้เว็บอื่นเรียกข้อมูล (CORS) หรือเครือข่ายนี้เข้าไม่ถึง: เปิด https://birdmap.rtaf.mi.th/api/BirdData/ ในเบราว์เซอร์ แล้วก๊อปข้อความทั้งหมดมาวางในช่องด้านล่าง หรือก๊อปตารางจากหน้าเว็บ'); fetchBtn.disabled = false; }
+    } }, '⇩ ดึงจาก birdmap.rtaf.mi.th');
+    const impBtn = h('button', { type: 'button', class: 'btn sm', 'data-bird': 'import', onclick: () => {
+      const t = ta2.value.trim(); if (!t) { say('ยังไม่ได้วางข้อมูล'); return; }
+      let rows = null, how = '', lat = null, lon = null;
+      try { const j = JSON.parse(t); const r = birdFromJson(j.birds || j.BirdData || j, j.units || j.Unit || null); rows = r.rows; how = r.how; lat = r.lat; lon = r.lon; } catch (e) { if (!(e instanceof SyntaxError)) { say('นำเข้าไม่ได้: ' + e.message); return; } }
+      if (!rows) { rows = parseBirdTable(t); how = 'จากตารางที่วาง (ไม่มีพิกัด จึงไม่มีแผนที่ — แนบภาพแผนที่ด้านล่างได้)'; }
+      if (!rows.length) { say('ไม่พบรายการที่อ่านได้ — ต้องเป็นแถวแบบ “จ. 2 พ.ย.69 09:10 200 4 x 4 STOP & ALERT” หรือ JSON ของ /api/BirdData/'); return; }
+      B.rows = rows; B.at = now(); B.src = 'paste'; B.lat = lat; B.lon = lon; save(); say('นำเข้า ' + rows.length + ' รายการ · ' + how); rd(true);
+    } }, 'นำเข้าข้อมูลที่วาง');
+    const box = E('brs-rows');
+    B.rows.forEach((r, i) => box.append(E('brs-brow', 'div', [
+      nokeys(h('input', { type: 'datetime-local', class: 'brs-in sm', value: r.t, 'aria-label': 'วันเวลา', oninput: ev => { if (ev.target.value) { r.t = ev.target.value.slice(0, 16); save(); rd(); } } })),
+      nokeys(h('input', { type: 'number', class: 'brs-in sm', value: r.ft, 'aria-label': 'ความสูง ft', oninput: ev => { r.ft = +ev.target.value || 0; save(); rd(); } })),
+      nokeys(h('input', { type: 'number', min: 1, max: 5, class: 'brs-in sm', value: r.sz, 'aria-label': 'ขนาด', oninput: ev => { r.sz = +ev.target.value || 0; save(); rd(); } })),
+      nokeys(h('input', { type: 'number', min: 1, max: 5, class: 'brs-in sm', value: r.n, 'aria-label': 'จำนวน', oninput: ev => { r.n = +ev.target.value || 0; save(); rd(); } })),
+      h('select', { class: 'brs-in sm', 'aria-label': 'ความเสี่ยง', onchange: ev => { r.risk = ev.target.value; delete r.c; save(); rd(); } }, [''].concat(RISKS.map(x => x[0])).map(x => h('option', { value: x, selected: r.risk === x ? true : null }, x || '—'))),
+      h('button', { type: 'button', class: 'btn sm', 'aria-label': 'ลบแถว', onclick: () => { B.rows.splice(i, 1); save(); rd(true); } }, '✕')])));
+    p.append(E('brs-fine', 'p', '5.3 ข้อมูลนก/สัตว์ป่าจากระบบ RTAF Bird Map (ตาราง วันที่ · ความสูง ft · ขนาด x จำนวน · ความเสี่ยง และแผนที่จุดพบนก) — ขนาด 1–5 และจำนวน 1–5 ตามรหัสของเว็บ; ความเสี่ยงตามที่เว็บคำนวณ ไม่ได้คำนวณในแอปนี้'),
+      field('สนามบิน / หน่วย', inp(B.unit, v => { B.unit = v; }, 'กองบิน 5')), field('ช่วงเวลาย้อนหลัง (นับจากเวลาปัจจุบัน)', sel),
+      E('brs-btns', 'div', [fetchBtn, h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { B.rows = []; B.at = 0; B.src = ''; save(); say('ล้างข้อมูลแล้ว'); rd(true); } }, 'ล้างข้อมูลนก')]), msg,
+      field('วางข้อมูล (ตารางจากเว็บ หรือ JSON)', ta2), E('brs-btns', 'div', impBtn),
+      E('brs-fine', 'p', 'รายการ (' + B.rows.length + ') — แก้ไข / ลบ / เพิ่มได้'), box,
+      h('button', { type: 'button', class: 'btn sm', onclick: () => { const n = new Date(now() + 7 * 3600000); B.rows.push({ t: n.getUTCFullYear() + '-' + p2(n.getUTCMonth() + 1) + '-' + p2(n.getUTCDate()) + 'T' + p2(n.getUTCHours()) + ':' + p2(n.getUTCMinutes()), ft: 0, sz: 1, n: 1, risk: '' }); B.at = B.at || now(); B.src = B.src || 'paste'; save(); rd(true); } }, '＋ เพิ่มแถว'),
+      field('หมายเหตุใต้ตาราง (บรรทัดแรกคือหัวข้อ 5.3 — ข้อความที่พิมพ์ต่อจากบรรทัดแรกจะแสดงใต้ตาราง เช่น สัตว์ป่าอื่น)', ta(txtOf(d), v => { S.txt[d.id] = v; }, '', rd, 3)), picsEd(d.id, rd, 'ภาพหน้าจอแผนที่จาก birdmap (ใช้เมื่อข้อมูลไม่มีพิกัด)'));
   }
   /* ---- generic text slides ---- */
   function drawTxt(st, d) {
