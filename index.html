@@ -2449,9 +2449,9 @@ textarea.brs-in{resize:vertical;font-family:var(--mono);font-size:12px;line-heig
 .brs-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
 .brs-slide{position:absolute;inset:0}
 .brs-pg{position:absolute;right:26px;bottom:62px;font:600 13px var(--mono);color:#5a6b7c}
-.brs-head{position:absolute;left:150px;right:150px;top:34px;height:96px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:46px;line-height:1.05;letter-spacing:.01em;color:#0b1624}
-.brs-body{position:absolute;left:70px;right:70px;top:150px;bottom:70px;overflow:hidden;font-size:var(--fs,26px);line-height:1.28}
-.brs-body.small{font-size:var(--fs,22px)}
+.brs-head{position:absolute;left:170px;right:170px;top:34px;height:96px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:46px;line-height:1.25;letter-spacing:.01em;color:#0b1624}
+.brs-body{position:absolute;left:70px;right:70px;top:150px;bottom:70px;overflow:hidden;font-size:var(--fs,24px);line-height:1.7}
+.brs-body.small{font-size:var(--fs,21px)}
 .brs-body.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 .brs-tx{display:flex;flex-direction:column;gap:.18em}
 .brs-l{font-size:1em;position:relative;padding-left:0}
@@ -2475,12 +2475,12 @@ textarea.brs-in{resize:vertical;font-family:var(--mono);font-size:12px;line-heig
 .brs-pics img{width:100%;max-height:430px;object-fit:contain;border:1px solid #c8d3de;border-radius:4px;background:#fff}
 .brs-pics.n1 img{max-height:440px}
 .brs-empty.big{font-size:1.1em;color:#6b7c8d;padding:1em 0}
-.brs-cover{position:absolute;left:140px;right:140px;top:150px;bottom:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px}
-.brs-ct1{margin:0;font-size:84px;line-height:1;font-weight:700;color:#0b1624}
-.brs-ct2{font-size:34px;line-height:1.2}.brs-ct3{font-size:24px;color:#33485c}
+.brs-cover{position:absolute;left:140px;right:140px;top:150px;bottom:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px}
+.brs-ct1{margin:0;font-size:84px;line-height:1.2;font-weight:700;color:#0b1624}
+.brs-ct2{font-size:34px;line-height:1.7}.brs-ct3{font-size:24px;line-height:1.7;color:#33485c}
 .brs-big{position:absolute;left:100px;right:100px;top:290px;text-align:center;font-size:56px;color:#0b1624}
-.brs-clk-t{font-size:36px;margin-bottom:6px}
-.brs-clock{font:700 168px/1 var(--mono);letter-spacing:.02em;color:#0b2a4a}
+.brs-clk-t{font-size:36px;line-height:1.5;margin-bottom:14px}
+.brs-clock{font:700 168px/1.1 var(--mono);letter-spacing:.02em;color:#0b2a4a}
 .brs-clock2{font:500 28px var(--mono);color:#35506b;margin-top:10px}
 .brs-lnk{margin-top:26px;font-size:18px;color:#1b78b8}
 .brs-emgs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -2496,7 +2496,7 @@ textarea.brs-in{resize:vertical;font-family:var(--mono);font-size:12px;line-heig
 .brs-chart .ln{fill:none;stroke:#7fa5bf;stroke-width:4;stroke-linejoin:round}.brs-chart .pt{fill:#0f5e8a}.brs-chart .lb{font:15px sans-serif;fill:#26384a}
 .brs-radios{display:grid;gap:14px;grid-template-columns:1fr}
 .brs-radios.n2{grid-template-columns:1fr 1fr}.brs-radios.n3{grid-template-columns:repeat(3,1fr)}
-.brs-rcard{border:3px solid #b3262a;background:#fffffff0;padding:8px 14px;font-size:.62em;line-height:1.3;border-radius:2px}
+.brs-rcard{border:3px solid #b3262a;background:#fffffff0;padding:8px 14px;font-size:.62em;line-height:1.65;border-radius:2px}
 .brs-radios .brs-rcard:nth-child(2){border-color:#1b78b8}.brs-radios .brs-rcard:nth-child(3){border-color:#2f8f4e}
 .brs-rh{display:block;font-size:1.25em;margin-bottom:2px}
 .brs-rnote{margin-top:12px;font-size:.62em;border:3px solid #b3262a;display:inline-block;padding:6px 14px;background:#fffffff0}
@@ -2575,6 +2575,8 @@ html[data-brs-show="1"] body{overflow:hidden}
 .brs-bmap{width:100%;height:auto;max-height:480px;display:block;border:1px solid #c8d3de;border-radius:4px;background:#f4f7fa}
 .brs-brow{display:grid;grid-template-columns:minmax(0,1.7fr) 74px 50px 50px minmax(0,1.4fr) 34px;gap:6px;margin-bottom:6px}
 @media(max-width:700px){.brs-brow{grid-template-columns:1fr 1fr}}
+
+.brs-body.roomy .brs-l{line-height:2}
 
 </style>
 </head>
@@ -29907,10 +29909,10 @@ const BRIEF_SLIDES = function (C) {
   const pics = (k, n) => { const L = imgs(k); if (!L.length) return null; return E('brs-pics n' + Math.min(L.length, 4), 'div', L.map(u => h('img', { src: u, alt: '' }))); };
   const split = (left, right) => E('brs-split' + (right ? ' two' : ''), 'div', [left, right]);
   const fitBox = body => {                                         // shrink the type until the slide body fits
-    let fs = 26; body.style.setProperty('--fs', fs + 'px');
+    let fs = 24; body.style.setProperty('--fs', fs + 'px');
     for (let g = 0; g < 14 && body.scrollHeight > body.clientHeight + 2 && fs > 11; g++) { fs -= 1.5; body.style.setProperty('--fs', fs + 'px'); }
   };
-  const head = (no, title) => E('brs-head', 'div', (no ? no + '. ' : '') + title);
+  const head = (no, title) => { const t = (no ? no + '. ' : '') + title, e = E('brs-head', 'div', t), fs = Math.max(30, Math.min(46, Math.floor(930 / (t.length * 0.7)))); if (fs < 46) e.style.fontSize = fs + 'px'; return e; };   // long titles shrink so they stay clear of the two crests
 
   /* ---------------- the deck: ordered list of slide definitions ---------------- */
   function deck() {
@@ -29989,7 +29991,7 @@ const BRIEF_SLIDES = function (C) {
   /* ---- 4.1 mission ---- */
   function drawPrim(st) {
     const a = S.alt && S.alt.k !== 'na' ? missionLabel(S.alt) : 'N/A';
-    st.append(head('4', 'MISSION DESCRIPTION'), E('brs-body', 'div', [E('brs-l', 'div', '4.1. PRIMARY MISSION / ALTERNATE MISSION'), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'PRIMARY MISSION : ' + (missionLabel(S.prim) || '—')]), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'ALTERNATE MISSION : ' + a])]));
+    st.append(head('4', 'MISSION DESCRIPTION'), E('brs-body roomy', 'div', [E('brs-l', 'div', '4.1. PRIMARY MISSION / ALTERNATE MISSION'), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'PRIMARY MISSION : ' + (missionLabel(S.prim) || '—')]), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'ALTERNATE MISSION : ' + a])]));
   }
   function edPrim(p, rd) {
     const items = missionItems(), mk = (key, lab, free) => {
