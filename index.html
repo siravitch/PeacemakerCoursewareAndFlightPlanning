@@ -2585,6 +2585,19 @@ html[data-brs-show="1"] body{overflow:hidden}
 .brs-mrow input{margin-top:3px}
 .brs-mch .brs-row{display:flex;gap:6px;align-items:center;margin-bottom:4px}.brs-mch .brs-fl{flex:1}
 
+/* ===== Briefing 5.4 weather (METAR / TAF cards) ===== */
+.brs-bsub.bad{color:#b3261e;font-weight:700}
+.brs-wxg{display:grid;gap:10px;margin-top:.3em}.brs-wxg.c2{grid-template-columns:1fr 1fr}.brs-wxg.c1{grid-template-columns:1fr}
+.brs-wxc{background:#ffffffe6;border:1px solid #c8d3de;border-radius:6px;padding:6px 10px;min-width:0;font-size:.62em;line-height:1.7}
+.brs-wxg.n1 .brs-wxc{font-size:.9em}.brs-wxg.n2 .brs-wxc{font-size:.74em}.brs-wxg.n3 .brs-wxc{font-size:.62em}
+.brs-wxr{line-height:1.45}.brs-wxr.none{line-height:1.7}
+.brs-wxh{display:flex;align-items:center;gap:8px;font-size:1.25em;border-bottom:1px solid #cfd8e1;margin-bottom:2px}
+.brs-wxb{font-style:normal;color:#fff;border-radius:4px;padding:0 .5em;font-size:.8em;line-height:1.5}
+.brs-wxk{font-size:.8em;color:#4a5b6c;font-weight:700;margin-top:3px}
+.brs-wxr{font-family:var(--mono,monospace);word-break:break-word}.brs-wxr.none{font-family:inherit;opacity:.6}
+.brs-wxe{border:1px solid var(--line2,#27394b);border-radius:8px;padding:6px 8px;margin-bottom:8px}
+.brs-wxd summary{cursor:pointer;font-size:13px;color:var(--mute)}
+
 </style>
 </head>
 <body class="m-0 overflow-hidden bg-tac-bg font-tac text-slate-200">
@@ -29782,7 +29795,7 @@ const BRIEF_SLIDES = function (C) {
   const TXT = {
     prm1: T('prm1', '5', 'PREMISSION REMARK', '5.1 SPECIAL INSTRUCTION\n  GPS-296\n5.2 NOTAMs\n  VTBP, VTBD, VTSB', { img: 1, hint: 'แปะภาพ NOTAM ที่ดึงมา (ถ้ามี) ได้ด้านล่าง' }),
     prm3: T('prm3', '5', 'PREMISSION REMARK', '5.3 BIRD AND OTHER WILD LIFE CONDITION\n  ', { img: 1, hint: 'แนบแผนที่นก/สัตว์ป่าหรือภาพจาก Photo tab ได้' }),
-    prm4: T('prm4', '5', 'PREMISSION REMARK', '5.4 WEATHER\n  VTBP, VTBD, VTPH', { img: 1, hint: 'พิมพ์ METAR/TAF หรือแนบภาพ Windy', autoRk: 'PREMISSIONREMARK>WEATHER' }),
+    prm4: T('prm4', '5', 'PREMISSION REMARK', '5.4 WEATHER\n', { img: 1, hint: 'พิมพ์ METAR/TAF หรือแนบภาพ Windy', autoRk: 'PREMISSIONREMARK>WEATHER' }),
     prm5: T('prm5', '5', 'PREMISSION REMARK', '5.5 INTELLIGENCE (TGT.AREA / THREAT) (การข่าวในพื้นที่และอาวุธฝ่ายต่อต้าน)\n  -\n5.6 RISK ASSESSMENT\n  Low Risks (Score  )', { img: 1, hint: 'แนบแบบประเมินความเสี่ยง (Individual Risk Assessment) เป็นภาพได้' }),
     gnd: T('gnd', '8', 'GROUND PROCEDURE', '8.1 PERSONAL EQUIPMENT\n  A. NORMAL\n    ร่ม หมวก checklist\n  B. SPECIAL\n    GPS\n8.2 AIRCRAFT PREFLIGHT CHECKS\n  A. BEFORE EXTERIOR CHECK (' + FC + ')\n  B. EXTERIOR CHECK (' + FC + ')\n  C. INTERIOR CHECK (' + FC + ')\n8.3 MISSION EQUIPMENT CHECKS\n  None'),
     eng: T('eng', '9', 'ENGINE START PROCEDURE', '9.1 NORMAL PROCEDURE\n  ' + FC + '\n9.2 ABORT START\n  จนท.ให้สัญญาณในการดับ ย. หรือสังเกตสิ่งผิดปกติ\n  No light of 10 sec / 20% RPM\n9.3 EMERGENCY\n  ให้ปฏิบัติตามหัวข้อ Emergency Engine Fire During Start\n  Emergency Ground Egress\n9.4 DELAY TIME / SPARE PROCEDURES\n  None'),
@@ -29945,7 +29958,7 @@ const BRIEF_SLIDES = function (C) {
     more().forEach((m, i) => D0.push({ id: 'obj' + (i + 1), name: '4.2 OBJECTIVE · MISSION ' + (i + 2) + ' — ' + missionShort(m), ed: (p, rd) => edObj(p, rd, i + 1), draw: st => drawObj(st, i + 1) }));
     D0.push({ id: 'ovw', name: '4.3 MISSION OVERVIEW', ed: edOvw, draw: drawOvw });
     D0.push(txtSlide(TXT.prm1)); D0.push({ id: 'prm3', name: '5. PREMISSION REMARK — 5.3 BIRD AND OTHER WILD LIFE', ed: (p, rd) => edBird(p, TXT.prm3, rd), draw: st => drawBird(st, TXT.prm3) });
-    ['prm4', 'prm5'].forEach(k => D0.push(txtSlide(TXT[k])));
+    D0.push({ id: 'prm4', name: '5. PREMISSION REMARK — 5.4 WEATHER', ed: (p, rd) => edWx(p, TXT.prm4, rd), draw: st => drawWx(st, TXT.prm4) }); D0.push(txtSlide(TXT.prm5));
     D0.push({ id: 'mc1', name: '6.1 MISSION CARD · FRONT', ed: edMc1, draw: drawMc1 });
     D0.push({ id: 'mc2', name: '6.2 MISSION CARD · W&B / PERFORMANCE', ed: edMc2, draw: drawMc2 });
     D0.push({ id: 'mc3', name: '6.3 MISSION CARD · NOTE / REMARK', ed: edMc3, draw: drawMc3 });
@@ -30223,6 +30236,63 @@ const BRIEF_SLIDES = function (C) {
       E('brs-fine', 'p', 'รายการ (' + B.rows.length + ') — แก้ไข / ลบ / เพิ่มได้'), box,
       h('button', { type: 'button', class: 'btn sm', onclick: () => { const n = new Date(now() + 7 * 3600000); B.rows.push({ t: n.getUTCFullYear() + '-' + p2(n.getUTCMonth() + 1) + '-' + p2(n.getUTCDate()) + 'T' + p2(n.getUTCHours()) + ':' + p2(n.getUTCMinutes()), ft: 0, sz: 1, n: 1, risk: '' }); B.at = B.at || now(); B.src = B.src || 'paste'; save(); rd(true); } }, '＋ เพิ่มแถว'),
       field('หมายเหตุใต้ตาราง (บรรทัดแรกคือหัวข้อ 5.3 — ข้อความที่พิมพ์ต่อจากบรรทัดแรกจะแสดงใต้ตาราง เช่น สัตว์ป่าอื่น)', ta(txtOf(d), v => { S.txt[d.id] = v; }, '', rd, 3)), picsEd(d.id, rd, 'ภาพหน้าจอแผนที่จาก birdmap (ใช้เมื่อข้อมูลไม่มีพิกัด)'));
+  }
+  /* ---- 5.4 weather : METAR / TAF of the stations the pilot picks, pulled from the RTAF weather site (weather.rtaf.mi.th) ---- */
+  const WX_API = 'https://weather.rtaf.mi.th/api/v1/';
+  const WX_STNS = [['VTMD', 'DONMUANG'], ['VTNI', 'DOI-INTANON'], ['VTNC', 'CHIANGMAI'], ['VTNP', 'PHITSANULOK'], ['VTED', 'UDON'], ['VTEU', 'UBON'], ['VTEN', 'KORAT'], ['VTEZ', 'NAMPHONG'], ['VTMG', 'KAOKIEO'], ['VTMI', 'TAKHLI'], ['VTML', 'KOKEKATHIEM'], ['VTMM', 'MUANGKOM'], ['VTMK', 'KAMPHAENGSAEN'], ['VTMW', 'WATTHANA-NAKHON'], ['VTMU', 'U-TAPHAO'], ['VTMH', 'HUA-HIN'], ['VTMP', 'PRACHUAP'], ['VTDB', 'SURATTHANI'], ['VTDS', 'HAT-YAI'], ['VTDT', 'BHO-THONG']];   // stations of the site as listed on 2 Nov 2026 (refreshed by every pull)
+  const wxs = () => S.wx || (S.wx = { stns: [], man: {}, feed: null });
+  let wxMsg = '';
+  const thStamp = ms => { const t = new Date(ms + 7 * 3600000); return t.getUTCDate() + ' ' + THM[t.getUTCMonth()] + ' ' + String(t.getUTCFullYear() + 543).slice(2) + ' ' + p2(t.getUTCHours()) + ':' + p2(t.getUTCMinutes()) + ' ICT'; };
+  const wxClean = (t, taf) => { let x = String(t || '').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim(); if (taf) x = x.replace(/\s+(TEMPO|BECMG|FM\d{6}|PROB\d\d)\b/g, '\n$1'); return x; };
+  const wxName = c => { const f = wxs().feed, q = (f && f.list.find(x => x[0] === c)) || WX_STNS.find(x => x[0] === c); return q ? q[1] : ''; };
+  async function wxFetch() {
+    const post = u => fetch(WX_API + u, { method: 'POST', cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(t => JSON.parse(t.trim()));
+    const [m, t] = await Promise.allSettled([post('metar/desktop/getMetarAllStationJSON'), post('taf/desktop/getTafJSON')]);
+    if (m.status !== 'fulfilled' && t.status !== 'fulfilled') throw new Error((m.reason && m.reason.message) || 'ไม่มีการตอบกลับ');
+    const old = wxs().feed, feed = { at: now(), metar: old ? old.metar : {}, taf: old ? old.taf : {}, list: old ? old.list : WX_STNS.slice(), ok: [m.status === 'fulfilled', t.status === 'fulfilled'] }, names = {};
+    if (m.status === 'fulfilled') { feed.metar = {}; arr(m.value.CURRENT_WEATHER).forEach(r => { if (!r || !r.STATION_CODE || r.STATION_CODE === '-') return; names[r.STATION_CODE] = r.STATION_NAME; feed.metar[r.STATION_CODE] = { n: r.STATION_NAME, m: r.METAR && r.METAR !== 'NIL' && r.METAR !== '-' ? wxClean(r.METAR) : '', time: r.NEWS_TIME || '', cat: r.STATION_COLOR_NAME && r.STATION_COLOR_NAME !== '-' ? r.STATION_COLOR_NAME : '' }; }); }
+    if (t.status === 'fulfilled') { feed.taf = {}; arr(t.value.currentTaf).forEach(r => { if (!r || !r.stationCode) return; names[r.stationCode] = r.stationName; feed.taf[r.stationCode] = { n: r.stationName, t: wxClean(r.main && r.main.tafString, 1), time: (r.main && r.main.newsTime) || '' }; }); }
+    if (Object.keys(names).length) feed.list = Object.keys(names).map(c => [c, names[c]]);
+    return feed;
+  }
+  const wxData = c => {                                             // what the slide shows for one station: typed text wins, then the pulled text
+    const W = wxs(), man = W.man[c] || {}, f = W.feed, m = f && f.metar[c], t = f && f.taf[c];
+    return { code: c, name: wxName(c), metar: man.m && man.m.trim() ? { x: wxClean(man.m), own: 1 } : m && m.m ? { x: m.m, time: m.time, cat: m.cat } : null, taf: man.t && man.t.trim() ? { x: wxClean(man.t, 1), own: 1 } : t && t.t ? { x: t.t, time: t.time } : null, nilM: !!(m && !m.m), inFeed: !!(m || t) };
+  };
+  const catCol = c => ({ VFR: '#1c9a4a', MVFR: '#2a6fd6', IFR: '#d12c2c', LIFR: '#a22ab5' })[String(c).toUpperCase()] || '#6b7886';
+  function drawWx(st, d) {
+    const W = wxs(), f = W.feed, notes = String(txtOf(d)).split('\n').slice(1).filter(l => l.trim()).join('\n'), pp = pics(d.id), au = S.pull.nav ? A(d.autoRk) : null;
+    const cards = W.stns.map(c => { const q = wxData(c);
+      const blk = (lab, o, none) => [E('brs-wxk', 'div', lab + (o && o.own ? '  (พิมพ์เอง)' : o && o.time ? '  · ' + o.time : '')), E('brs-wxr' + (o ? '' : ' none'), 'div', o ? o.x.split('\n').map(l => E('', 'div', l)) : none)];
+      return E('brs-wxc', 'div', [E('brs-wxh', 'div', [E('', 'b', (q.name ? q.name + ' · ' : '') + q.code), q.metar && q.metar.cat ? h('i', { class: 'brs-wxb', style: 'background:' + catCol(q.metar.cat) }, q.metar.cat) : null]),
+        ...blk('METAR', q.metar, q.nilM ? 'NIL (ไม่มีข่าวจากเว็บ ทอ.)' : q.inFeed || !f ? '— ไม่มีข้อมูล —' : '— ไม่พบสถานีนี้ในเว็บ ทอ. (พิมพ์เองได้ในช่องแก้ไข) —'), ...blk('TAF', q.taf, q.inFeed || !f ? '— ไม่มีข้อมูล —' : '— ไม่พบสถานีนี้ในเว็บ ทอ. (พิมพ์เองได้ในช่องแก้ไข) —')]); });
+    const stale = f && now() - f.at > 3 * 3600000, src = f ? 'METAR / TAF จาก weather.rtaf.mi.th · ดึงเมื่อ ' + thStamp(f.at) : 'ยังไม่ได้ดึงข้อมูล — กด “ดึง METAR / TAF” ในช่องแก้ไข';
+    const left = E('brs-col', 'div', [E('brs-bsub', 'div', src), stale ? E('brs-bsub bad', 'div', '⚠ ข้อมูลที่ดึงไว้เก่ากว่า 3 ชั่วโมง — ดึงใหม่ก่อนบรีฟ') : null,
+      cards.length ? E('brs-wxg c' + (cards.length > 2 ? 2 : 1) + ' n' + (cards.length > 4 ? 3 : cards.length > 2 ? 2 : 1), 'div', cards) : E('brs-empty', 'div', 'ยังไม่ได้เลือกสนาม — เพิ่มสนามจากรายการหรือพิมพ์รหัสในช่องแก้ไข'),
+      au ? E('brs-auto', 'div', '⇢ Navigation: ' + fromLines(au)) : null, notes ? textBlocks(notes) : null]);
+    const body = E('brs-body bird', 'div'); body.append(pp ? split(left, pp) : left);
+    st.append(head(d.no, d.title), E('brs-bh', 'div', '5.4 WEATHER'), body);
+  }
+  function edWx(p, d, rd) {
+    const W = wxs(), msg = E('brs-fine bird-msg', 'p', wxMsg), say = t => { wxMsg = t; msg.textContent = t; };
+    const fetchBtn = h('button', { type: 'button', class: 'btn sm', 'data-wx': 'fetch', onclick: async () => {
+      fetchBtn.disabled = true; say('กำลังดึง METAR / TAF จาก weather.rtaf.mi.th …');
+      try { const fd = await wxFetch(); W.feed = fd; save(); say('ดึงแล้ว: METAR ' + (fd.ok[0] ? Object.keys(fd.metar).filter(c => fd.metar[c].m).length + ' สถานี' : 'ดึงไม่ได้ (ใช้ข้อมูลเดิม)') + ' · TAF ' + (fd.ok[1] ? Object.keys(fd.taf).length + ' สถานี' : 'ดึงไม่ได้ (ใช้ข้อมูลเดิม)') + ' · ' + thStamp(fd.at)); rd(true); }
+      catch (e) { say('ดึงไม่ได้ (' + (e && e.message || e) + ') — เครื่องนี้อาจเข้าเว็บ weather.rtaf.mi.th ไม่ได้ (ต้องใช้เครือข่ายที่เปิดเว็บนั้นได้) หรือเว็บไม่อนุญาต: ข้อมูลเดิมยังอยู่ และพิมพ์ METAR / TAF เองได้ที่สนามแต่ละแห่ง'); fetchBtn.disabled = false; }
+    } }, '⇩ ดึง METAR / TAF จาก weather.rtaf.mi.th');
+    const lst = W.feed ? W.feed.list : WX_STNS, items = lst.map(x => ({ v: x[0], label: x[0] + ' · ' + x[1], sub: '', grp: 'สถานีของเว็บ ทอ.' })), add = c => { c = String(c || '').trim().toUpperCase(); if (!/^[A-Z0-9]{3,4}$/.test(c)) { const hit = lst.filter(x => (x[0] + ' ' + x[1]).toUpperCase().indexOf(c) >= 0); if (hit.length === 1) c = hit[0][0]; } if (!/^[A-Z0-9]{3,4}$/.test(c)) { say('รหัสสนามต้องเป็นตัวอักษร/ตัวเลข 3–4 ตัว เช่น VTMP'); return; } if (W.stns.indexOf(c) < 0) W.stns.push(c); save(); say(''); rd(true); };
+    const list = E('brs-mch');
+    W.stns.forEach((c, i) => { const q = wxData(c), man = W.man[c] || (W.man[c] = {});
+      const det = h('details', { class: 'brs-wxd', open: man.m || man.t || (!q.inFeed && W.feed) ? true : null }, h('summary', null, 'พิมพ์ / วาง METAR - TAF เอง (ทับข้อมูลที่ดึง)'),
+        field('METAR', ta(man.m || '', v => { man.m = v; }, 'เช่น VTBD 021200Z 08005KT 9999 …', rd, 2)), field('TAF', ta(man.t || '', v => { man.t = v; }, 'เช่น VTBD 021100Z 0211/0311 …', rd, 3)));
+      list.append(E('brs-wxe', 'div', [E('brs-row', 'div', [E('brs-fl', 'span', (q.name ? q.name + ' · ' : '') + c + '  —  ' + (q.inFeed ? 'มีข้อมูลจากเว็บ ทอ.' : W.feed ? 'ไม่พบในเว็บ ทอ.' : 'ยังไม่ได้ดึง')),
+        h('button', { type: 'button', class: 'btn sm', 'aria-label': 'เลื่อนขึ้น', disabled: i === 0 ? true : null, onclick: () => { [W.stns[i - 1], W.stns[i]] = [W.stns[i], W.stns[i - 1]]; save(); rd(true); } }, '▲'),
+        h('button', { type: 'button', class: 'btn sm', 'aria-label': 'เลื่อนลง', disabled: i === W.stns.length - 1 ? true : null, onclick: () => { [W.stns[i + 1], W.stns[i]] = [W.stns[i], W.stns[i + 1]]; save(); rd(true); } }, '▼'),
+        h('button', { type: 'button', class: 'btn sm', 'aria-label': 'เอาสนามนี้ออก ' + c, onclick: () => { W.stns.splice(i, 1); save(); rd(true); } }, '✕')]), det])); });
+    p.append(E('brs-fine', 'p', '5.4 สภาพอากาศ — ดึง METAR / TAF จากเว็บอุตุนิยมวิทยา กองทัพอากาศ (weather.rtaf.mi.th) แล้วแสดงเฉพาะสนามที่เลือก เลือกสนามจากรายการ หรือพิมพ์รหัส 4 ตัว (เช่น VTBD) แล้วกด Enter · สนามที่เว็บ ทอ. ไม่มีข้อมูล พิมพ์ METAR / TAF เองได้'),
+      E('brs-btns', 'div', fetchBtn), msg,
+      field('เพิ่มสนาม', combo(items, { ph: 'ค้นหา / พิมพ์รหัสสนาม แล้วกด Enter…', aria: 'เพิ่มสนามสำหรับ METAR TAF', free: 1, onPick: x => add(x.v === 'tx' ? x.label : x.v) })), list,
+      field('หมายเหตุใต้ข้อมูล (บรรทัดแรกคือหัวข้อ 5.4 — ข้อความต่อจากบรรทัดแรกจะแสดงใต้ข้อมูล)', ta(txtOf(d), v => { S.txt[d.id] = v; }, '', rd, 3)), E('brs-fine', 'p', 'ลมที่ตั้งในแท็บ Navigation จะแสดงต่อท้ายอัตโนมัติ (ถ้ามี) · แนบภาพ Windy ได้ด้านล่าง'), picsEd(d.id, rd, 'ภาพ Windy / ภาพถ่ายดาวเทียม'));
   }
   /* ---- generic text slides ---- */
   function drawTxt(st, d) {
