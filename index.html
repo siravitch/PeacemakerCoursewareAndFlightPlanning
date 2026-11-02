@@ -2578,6 +2578,13 @@ html[data-brs-show="1"] body{overflow:hidden}
 
 .brs-body.roomy .brs-l{line-height:2}
 
+/* ===== Briefing 4.1 extra missions (tick list) ===== */
+.brs-more{margin-top:12px;padding:10px;border:1px solid var(--line2,#27394b);border-radius:8px}
+.brs-mchk{max-height:230px;overflow:auto;margin:8px 0;padding:4px 6px;border:1px solid var(--line2,#27394b);border-radius:6px}
+.brs-mrow{display:flex;align-items:flex-start;gap:6px;padding:3px 2px;font-size:13px;cursor:pointer}
+.brs-mrow input{margin-top:3px}
+.brs-mch .brs-row{display:flex;gap:6px;align-items:center;margin-bottom:4px}.brs-mch .brs-fl{flex:1}
+
 </style>
 </head>
 <body class="m-0 overflow-hidden bg-tac-bg font-tac text-slate-200">
@@ -29757,6 +29764,18 @@ const BRIEF_SLIDES = function (C) {
     return it.label;
   };
 
+  const missionShort = p => {                                       // short name of a mission (slide names, 18.x headings)
+    if (!p) return ''; if (p.k === 'tx') return p.t || ''; if (p.k === 'na') return 'N/A';
+    if (p.k.indexOf('tr:') === 0) return TRAIN.find(q => q.k === p.k).en;
+    if (p.k.indexOf('gd:') === 0) return GDS.find(q => q[0] === p.k)[1];
+    if (p.k.indexOf('sp:') === 0) { const m = D.missions[+p.k.slice(3)]; return m ? m.name.replace(/ BRIEFING$/, '') : p.k; }
+    return missionLabel(p);
+  };
+  const more = () => S.more || (S.more = []);
+  const missions = () => (S.prim ? [S.prim] : []).concat(more());   // every mission of this flight: primary first, then the extra ones ticked in 4.1
+  const missionsText = () => { const L = missions(); return !L.length ? '' : L.length === 1 ? missionLabel(L[0]) : L.map(missionShort).join('  +  '); };
+  const sameMs = (a, b) => a && b && a.k === b.k && (a.k !== 'tx' || a.t === b.t);
+
   /* ---------------- default texts of the plain slides (from the pptx; editable) ---------------- */
   const T = (id, no, title, def, o) => Object.assign({ id, no, title, def, kind: 'txt' }, o || {});
   const FC = 'Follow checklist';
@@ -29801,7 +29820,7 @@ const BRIEF_SLIDES = function (C) {
   const ROLES = [['pilot', 'นักบิน', 'Pilot'], ['co-pilot', 'นักบินผู้ช่วย', 'Co-pilot'], ['passenger', 'ผู้โดยสาร', 'Passenger']];
 
   /* ---------------- state ---------------- */
-  const dflt = () => ({ v: 1, i: 0, title: 'Pre-Flight Briefing', briefer: '', date: '', roll: [{ n: '', r: 'pilot' }, { n: '', r: 'co-pilot' }], emerg: [], prim: null, alt: { k: 'na' }, objMode: 'train', objTxt: '', prof: null,
+  const dflt = () => ({ v: 1, i: 0, title: 'Pre-Flight Briefing', briefer: '', date: '', roll: [{ n: '', r: 'pilot' }, { n: '', r: 'co-pilot' }], emerg: [], prim: null, more: [], alt: { k: 'na' }, objMode: 'train', objTxt: '', prof: null,
     txt: {}, img: {}, card: {}, radio: null, radioNote: '*** UHF : 255.8\nEmergency : 121.5 / 243.0', areas: null, extra: [], off: {}, pull: { nav: true, wb: true, fuel: true, perf: true } });
   let S = dflt(), loaded = false;
   const load = () => { loaded = true; try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.v === 1) { S = Object.assign(dflt(), j); S.pull = Object.assign(dflt().pull, j.pull || {}); } } catch (e) { /* ignore */ } };
@@ -29821,9 +29840,9 @@ const BRIEF_SLIDES = function (C) {
   const A = rk => { if (!X) X = collect(); const m = mInfoSel(); try { return auto(rk, X, m); } catch (e) { return null; } };
   const mInfoSel = () => { const p = S.prim; if (!p || p.k.indexOf('sp:') !== 0) return null; const m = D.missions[+p.k.slice(3)]; const t = m && mInfo(m)[1]; return t && typeof MODS !== 'undefined' ? MODS[t] : null; };
   const fromLines = l => (l && l.length ? l.join(' · ') : '');
-  const reqOf = p => {                                            // {title, lines[]} of the objective of a primary / alternate mission
+  const reqOf = (p, own) => {                                       // {title, lines[]} of the objective of a mission; own = the typed requirement of a free-text mission
     if (!p || p.k === 'na') return null;
-    if (p.k === 'tx') return { title: p.t || '', lines: String(S.objTxt || '').split('\n').filter(Boolean) };
+    if (p.k === 'tx') return { title: p.t || '', lines: String(own != null ? own : S.objTxt || '').split('\n').filter(Boolean) };
     if (p.k.indexOf('tr:') === 0) { const t = TRAIN.find(q => q.k === p.k); let n = 0; return { title: t.en + '  ' + t.th + '   ' + t.ref, lines: ['ผู้รับการฝึกจะได้รับการฝึกและปฏิบัติในเรื่อง'].concat(t.req.map(r => /^ /.test(r) ? r : (++n, thn(n) + '. ' + r))) }; }
     if (p.k.indexOf('gd:') === 0) { const g = GDS.find(q => q[0] === p.k); return { title: g[1] + ' · ' + g[2], lines: [] }; }
     if (p.k.indexOf('sp:') === 0) { const m = D.missions[+p.k.slice(3)], id = m && mInfo(m)[2], Tb = (D.obj || []).find(q => q.id === id); if (!Tb) return { title: m ? m.name.replace(/ BRIEFING$/, '') + ' · ' + mInfo(m)[0] : '', lines: [] }; const col = S.objMode === 'check' ? 2 : 1; return { title: Tb.name + ' — ' + (col === 2 ? 'สำหรับการตรวจสอบ' : 'สำหรับการฝึก'), lines: Tb.rows.map(r => r[0] + '   ' + r[col]) }; }
@@ -29922,7 +29941,8 @@ const BRIEF_SLIDES = function (C) {
     D0.push({ id: 'time', name: '2. TIME HACK', ed: edTime, draw: drawTime });
     D0.push({ id: 'emg', name: '3. EMERGENCY OF MISSION', ed: edEmg, draw: drawEmg });
     D0.push({ id: 'prim', name: '4.1 PRIMARY / ALTERNATE MISSION', ed: edPrim, draw: drawPrim });
-    D0.push({ id: 'obj', name: '4.2 OBJECTIVE', ed: edObj, draw: drawObj });
+    D0.push({ id: 'obj', name: '4.2 OBJECTIVE' + (more().length ? ' · MISSION 1 — ' + missionShort(S.prim) : ''), ed: (p, rd) => edObj(p, rd, 0), draw: st => drawObj(st, 0) });
+    more().forEach((m, i) => D0.push({ id: 'obj' + (i + 1), name: '4.2 OBJECTIVE · MISSION ' + (i + 2) + ' — ' + missionShort(m), ed: (p, rd) => edObj(p, rd, i + 1), draw: st => drawObj(st, i + 1) }));
     D0.push({ id: 'ovw', name: '4.3 MISSION OVERVIEW', ed: edOvw, draw: drawOvw });
     D0.push(txtSlide(TXT.prm1)); D0.push({ id: 'prm3', name: '5. PREMISSION REMARK — 5.3 BIRD AND OTHER WILD LIFE', ed: (p, rd) => edBird(p, TXT.prm3, rd), draw: st => drawBird(st, TXT.prm3) });
     ['prm4', 'prm5'].forEach(k => D0.push(txtSlide(TXT[k])));
@@ -29932,7 +29952,9 @@ const BRIEF_SLIDES = function (C) {
     D0.push({ id: 'rad', name: '7. RADIO', ed: edRadio, draw: drawRadio });
     ['gnd', 'eng', 'aft', 'taxi', 'bto', 'tko', 'atk', 'dep', 'enr'].forEach(k => D0.push(txtSlide(TXT[k])));
     areas().forEach((a, i) => D0.push({ id: 'area' + i, name: '17. TARGET / OPERATING AREA · ' + (a.n || (i + 1)), ed: (p, rd) => edArea(p, i, rd), draw: st => drawArea(st, i) }));
-    ['mp', 'con1', 'con2', 'rec', 'tpl', 'lem', 'alnd', 'pf', 'ckp', 'aem'].forEach(k => D0.push(txtSlide(TXT[k])));
+    D0.push(txtSlide(TXT.mp));
+    more().forEach((m, i) => D0.push(txtSlide(T('mpm' + (i + 1), '18', 'MISSION PROFILE', '18.1 ' + missionShort(m) + '\n  ', { img: 1, hint: 'โปรไฟล์ของภารกิจที่ ' + (i + 2) + ' ในเที่ยวบินนี้' }))));
+    ['con1', 'con2', 'rec', 'tpl', 'lem', 'alnd', 'pf', 'ckp', 'aem'].forEach(k => D0.push(txtSlide(TXT[k])));
     S.extra.forEach((x, i) => D0.push({ id: 'x' + i, name: '＋ ' + (x.t || 'สไลด์เพิ่มเติม ' + (i + 1)), ed: (p, rd) => edExtra(p, i, rd), draw: st => drawExtra(st, i) }));
     D0.push({ id: 'qs', name: '27. QUESTION & SUGGESTION', ed: p => p.append(E('brs-fine', 'p', 'สไลด์ปิดท้าย — ไม่มีข้อมูลให้กรอก')), draw: st => st.append(head('27', 'QUESTION & SUGGESTION'), E('brs-big', 'div', 'Question & Suggestion')), plain: 1 });
     return D0;
@@ -29941,7 +29963,7 @@ const BRIEF_SLIDES = function (C) {
 
   /* ---- slide: title ---- */
   function drawTitle(st) {
-    const a = S.prim ? missionLabel(S.prim) : '';
+    const a = missionsText();
     st.append(E('brs-cover', 'div', [E('brs-ct1', 'h1', S.title || 'Pre-Flight Briefing'), a ? E('brs-ct2', 'div', 'Mission : ' + a) : null, E('brs-ct3', 'div', [S.briefer || '', S.date ? '   ' + S.date : ''])]));
   }
   function edTitle(p) {
@@ -29990,33 +30012,62 @@ const BRIEF_SLIDES = function (C) {
   }
   /* ---- 4.1 mission ---- */
   function drawPrim(st) {
-    const a = S.alt && S.alt.k !== 'na' ? missionLabel(S.alt) : 'N/A';
-    st.append(head('4', 'MISSION DESCRIPTION'), E('brs-body roomy', 'div', [E('brs-l', 'div', '4.1. PRIMARY MISSION / ALTERNATE MISSION'), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'PRIMARY MISSION : ' + (missionLabel(S.prim) || '—')]), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'ALTERNATE MISSION : ' + a])]));
+    const a = S.alt && S.alt.k !== 'na' ? missionLabel(S.alt) : 'N/A', L = [E('brs-l', 'div', '4.1. PRIMARY MISSION / ALTERNATE MISSION'), E('brs-l l1', 'div', [E('brs-dot', 'i'), 'PRIMARY MISSION : ' + (missionLabel(S.prim) || '—')])];
+    more().forEach((m, i) => L.push(E('brs-l l1', 'div', [E('brs-dot', 'i'), 'MISSION ' + (i + 2) + ' : ' + missionLabel(m)])));
+    L.push(E('brs-l l1', 'div', [E('brs-dot', 'i'), 'ALTERNATE MISSION : ' + a]));
+    st.append(head('4', 'MISSION DESCRIPTION'), E('brs-body roomy', 'div', L));
   }
   function edPrim(p, rd) {
     const items = missionItems(), mk = (key, lab, free) => {
       const show = E('brs-cur', 'div'), up = () => { show.textContent = (S[key] && S[key].k !== 'na' ? missionLabel(S[key]) : (key === 'alt' ? 'N/A' : '— ยังไม่ได้เลือก')); };
       up();
-      return field(lab, E('', 'div', [show, combo(items, { ph: 'ค้นหาภารกิจ… (หรือพิมพ์เองแล้วกด Enter)', aria: lab, free: 1, onPick: x => { S[key] = x.v === 'tx' ? { k: 'tx', t: x.label } : { k: x.v }; save(); up(); rd(); } })]));
+      return field(lab, E('', 'div', [show, combo(items, { ph: 'ค้นหาภารกิจ… (หรือพิมพ์เองแล้วกด Enter)', aria: lab, free: 1, onPick: x => { S[key] = x.v === 'tx' ? { k: 'tx', t: x.label } : { k: x.v }; if (key === 'prim') S.more = more().filter(m => !sameMs(m, S.prim)); save(); up(); rd(true); } })]));
     };
     p.append(mk('prim', 'ภารกิจหลัก · PRIMARY MISSION'), mk('alt', 'ภารกิจรอง · ALTERNATE MISSION'), E('brs-fine', 'p', 'เลือกจากรายการ (ฝพ.๑–๓, การบินมาตรฐาน, ภารกิจพิเศษ 11 แบบ) หรือพิมพ์เอง ข้อ 4.2 Objective จะตามภารกิจหลักที่เลือก'));
+    p.append(moreEd(rd));
     if (!S.prim && /^m:/.test(C.sel())) p.append(h('button', { type: 'button', class: 'btn sm', onclick: () => { S.prim = { k: 'sp:' + C.sel().slice(2) }; save(); rd(); } }, 'ใช้ภารกิจที่เลือกในขั้นที่ 1'));
   }
+  /* ---- extra missions of the same flight: tick them, the slides follow (4.1 list, 4.2 objective and 18 mission profile per mission) ---- */
+  function moreEd(rd) {
+    const box = E('brs-more'), q = nokeys(h('input', { type: 'text', class: 'brs-in sm', placeholder: 'ค้นหารายการภารกิจ…', 'aria-label': 'ค้นหาภารกิจที่จะบินเพิ่ม' })), listEl2 = E('brs-mchk'), chosen = E('brs-mch');
+    const items = missionItems().filter(x => x.v !== 'na'), isOn = x => more().some(m => m.k === x.v), isPrim = x => S.prim && S.prim.k === x.v;
+    const fill = () => {
+      listEl2.replaceChildren(); const t = q.value.trim().toLowerCase(); let g = null;
+      items.filter(x => !t || (x.label + ' ' + (x.sub || '') + ' ' + (x.grp || '')).toLowerCase().indexOf(t) >= 0).forEach(x => {
+        if (x.grp !== g) { g = x.grp; if (g) listEl2.append(E('brs-grp', null, g)); }
+        const pr = isPrim(x); listEl2.append(E('brs-mrow', 'label', [h('input', { type: 'checkbox', 'data-mk': x.v, checked: pr || isOn(x) ? true : null, disabled: pr ? true : null, 'aria-label': x.label, onchange: ev => { if (ev.target.checked) { if (!S.prim) S.prim = { k: x.v }; else more().push({ k: x.v }); } else S.more = more().filter(m => m.k !== x.v); save(); fill(); drawChosen(); rd(true); } }), ' ' + x.label, pr ? E('brs-fine', 'em', '  (ภารกิจหลัก)') : null]));
+      });
+    };
+    const drawChosen = () => {
+      chosen.replaceChildren(); more().forEach((m, i) => chosen.append(E('brs-row', 'div', [E('brs-fl', 'span', 'ภารกิจที่ ' + (i + 2) + ' · ' + missionShort(m)),
+        h('button', { type: 'button', class: 'btn sm', 'aria-label': 'เลื่อนขึ้น', disabled: i === 0 ? true : null, onclick: () => { const a = more(); [a[i - 1], a[i]] = [a[i], a[i - 1]]; save(); fill(); rd(true); } }, '▲'),
+        h('button', { type: 'button', class: 'btn sm', 'aria-label': 'เลื่อนลง', disabled: i === more().length - 1 ? true : null, onclick: () => { const a = more(); [a[i + 1], a[i]] = [a[i], a[i + 1]]; save(); fill(); rd(true); } }, '▼'),
+        h('button', { type: 'button', class: 'btn sm', 'aria-label': 'เอาภารกิจนี้ออก', onclick: () => { more().splice(i, 1); save(); fill(); rd(true); } }, '✕')])));
+    };
+    q.addEventListener('input', fill);
+    const own = nokeys(h('input', { type: 'text', class: 'brs-in sm', placeholder: 'หรือพิมพ์ชื่อภารกิจเอง แล้วกด “เพิ่ม”', 'aria-label': 'ชื่อภารกิจเพิ่มเติมที่พิมพ์เอง' })), addOwn = () => { const t = own.value.trim(); if (!t) return; if (!S.prim) S.prim = { k: 'tx', t }; else more().push({ k: 'tx', t, o: '' }); own.value = ''; save(); fill(); rd(true); };
+    own.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); addOwn(); } });
+    fill(); drawChosen();
+    box.append(E('brs-fl', 'span', 'ภารกิจอื่นในเที่ยวบินเดียวกัน — ติ๊กเลือกได้หลายรายการ (สไลด์ 4.1, 4.2 Objective และ 18 Mission Profile จะเพิ่มตามภารกิจที่ติ๊ก)'), q, listEl2, chosen, E('brs-row', 'div', [own, h('button', { type: 'button', class: 'btn sm', 'data-more': 'add', onclick: addOwn }, '＋ เพิ่ม')]));
+    return box;
+  }
   /* ---- 4.2 objective ---- */
-  function drawObj(st) {
-    const sets = [['REQUIREMENT', reqOf(S.prim)]]; if (S.alt && S.alt.k !== 'na') sets.push(['ALTERNATE', reqOf(S.alt)]);
+  function drawObj(st, i) {
+    i = i || 0; const L = missions(), m = L[i] || null, multi = L.length > 1, own = i === 0 ? S.objTxt : (m && m.o) || '', sets = [[multi ? 'MISSION ' + (i + 1) : 'REQUIREMENT', reqOf(m, own)]];
+    if (i >= L.length - 1 && S.alt && S.alt.k !== 'na') sets.push(['ALTERNATE', reqOf(S.alt)]);
     const body = E('brs-body', 'div'), blk = E('brs-obj', 'div');
     sets.forEach(([lab, r]) => { if (!r) return; const lines = r.lines; blk.append(E('brs-oh', 'div', [lab + ' : ', E('', 'b', r.title)]), E('brs-ol' + (lines.length > 9 ? ' cols' : ''), 'div', lines.map(x => E('brs-l ' + (/^ /.test(x) ? 'l2' : 'l1 num'), 'div', x.trim())))); });
-    if (S.objTxt && S.prim && S.prim.k !== 'tx') blk.append(E('brs-ol', 'div', String(S.objTxt).split('\n').filter(Boolean).map(x => E('brs-l l1', 'div', [E('brs-dot', 'i'), x]))));
+    if (own && m && m.k !== 'tx') blk.append(E('brs-ol', 'div', String(own).split('\n').filter(Boolean).map(x => E('brs-l l1', 'div', [E('brs-dot', 'i'), x]))));
     if (!blk.children.length) blk.append(E('brs-empty big', 'div', 'เลือกภารกิจหลักในข้อ 4.1 ก่อน'));
-    const pp = pics('obj');
+    const pp = pics(i ? 'obj' + i : 'obj');
     body.append(E('brs-sub', 'div', '4.2. OBJECTIVE (REQUIREMENT / SKILL LEVEL)'), pp ? split(blk, pp) : blk);
     st.append(head('4', 'MISSION DESCRIPTION'), body);
   }
-  function edObj(p, rd) {
-    p.append(E('brs-fine', 'p', 'รายการ Requirement ดึงจากภารกิจหลักข้อ 4.1 (ฝพ.๑–๓ ตามตัวอย่างหลักสูตร / ภารกิจพิเศษตามตาราง Mission Objective ของ Briefing Guide)'),
+  function edObj(p, rd, i) {
+    i = i || 0; const m = missions()[i] || null, getT = () => (i === 0 ? S.objTxt : (m && m.o) || ''), setT = v => { if (i === 0) S.objTxt = v; else if (m) m.o = v; };
+    p.append(E('brs-fine', 'p', i === 0 ? 'รายการ Requirement ดึงจากภารกิจหลักข้อ 4.1 (ฝพ.๑–๓ ตามตัวอย่างหลักสูตร / ภารกิจพิเศษตามตาราง Mission Objective ของ Briefing Guide)' : 'Requirement ของภารกิจที่ ' + (i + 1) + ' (' + missionShort(m) + ') — มาจากรายการที่ติ๊กไว้ในข้อ 4.1'),
       field('ตารางภารกิจพิเศษ', h('select', { class: 'brs-in sm', onchange: ev => { S.objMode = ev.target.value; save(); rd(); } }, h('option', { value: 'train', selected: S.objMode !== 'check' }, 'สำหรับการฝึก'), h('option', { value: 'check', selected: S.objMode === 'check' }, 'สำหรับการตรวจสอบ'))),
-      field(S.prim && S.prim.k === 'tx' ? 'Requirement ของภารกิจนี้ (บรรทัดละข้อ)' : 'เพิ่มเติม (บรรทัดละข้อ)', ta(S.objTxt, v => { S.objTxt = v; }, 'พิมพ์ข้อกำหนด / ระดับทักษะที่ต้องการ', rd)), picsEd('obj', rd, 'แนบภาพตารางหลักสูตร (สแกน/ภาพถ่าย) ให้แสดงข้าง Requirement'));
+      field(m && m.k === 'tx' ? 'Requirement ของภารกิจนี้ (บรรทัดละข้อ)' : 'เพิ่มเติม (บรรทัดละข้อ)', ta(getT(), v => { setT(v); }, 'พิมพ์ข้อกำหนด / ระดับทักษะที่ต้องการ', rd)), picsEd(i ? 'obj' + i : 'obj', rd, 'แนบภาพตารางหลักสูตร (สแกน/ภาพถ่าย) ให้แสดงข้าง Requirement'));
   }
   /* ---- 4.3 overview (altitude – time) ---- */
   function chartSvg(P) {
@@ -30188,7 +30239,7 @@ const BRIEF_SLIDES = function (C) {
   }
   /* ---- mission card ---- */
   const cardAuto = (key, rk) => {
-    if (key === 'symbol') return missionLabel(S.prim) || '';
+    if (key === 'symbol') return missionsText();
     if (key === 'ac') return S.pull.wb && X && X.ac ? String(X.ac) : '';
     if (key === 'crew') { const r = S.roll.filter(q => q.n && q.n.trim() && q.r !== 'passenger'); return r.length ? r.map(q => q.n.trim()).join(', ') : (S.pull.wb ? fromLines((A(rk) || []).map(s => s.replace(/^[^:]*: /, ''))) : ''); }
     if (!rk) return '';
