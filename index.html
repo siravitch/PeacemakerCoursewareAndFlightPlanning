@@ -32307,14 +32307,20 @@ const MC = (function () {
   const OV0 = '1. Ground Procedures / Taxi / Run Up / T/O\n2. Traffic Pattern (DEMO, S&G x 2)\n3. Area Entry, L/O Cx\n4. NDB RWY 18 / Miss App.\n5. Traffic Pattern, SFL (As Required)\n6. Full Stop / Taxi Back / Shutdown';
   const PROF0 = [['Ground Op', 0, 0], ['Departure', 15, 0], ['DEMO, SG x2', 17, 1000], ['SID, VFR DEP.', 30, 1000], ['AREA ENTRY', 35, 4000], ['Recovery (NDB RWY 18)', 38, 4000], ['Traffic Pattern', 45, 1000], ['Full Stop L/D', 60, 1000], ['L/D', 65, 0], ['Shut Down', 70, 0]].map(a => ({ n: a[0], t: a[1], a: a[2] }));
   const dflt = () => ({
-    v: 1, tab: 'card', f: {}, fu: 'gal', dur: '1.5', vsFlap: 74, ac: [], overview: null, minfuel: [{ a: '', v: '' }, { a: '', v: '' }], apt: null, ov: {}, note: '', prof: null, pic: '',
+    v: 1, tab: 'card', f: {}, fu: 'gal', tt: '', tk: 'takeoff', lg: '', vsFlap: 74, ac: [], overview: null, minfuel: [{ a: '', v: '' }, { a: '', v: '' }], apt: null, ov: {}, note: '', prof: null, pic: '',
     opt: { mode: 'pair', swap: false, holes: 'left', cut: true },
     mm: { src: 'auto', pts: [], title: '', base: 'sat', rot: 'auto', copies: 2, brg: 'tc', varE: '', rings: '', fs: 10.5, boxes: {}, custom: [], pillOn: true }
   });
   let S = dflt(), loaded = false;
   const load = () => {
     loaded = true;
-    try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.v === 1) { const d = dflt(); S = Object.assign(d, j); S.opt = Object.assign(d.opt, j.opt || {}); S.mm = Object.assign(d.mm, j.mm || {}); S.f = j.f || {}; S.ov = j.ov || {}; S.ac = Array.isArray(j.ac) ? j.ac : []; } } catch (e) { /* ignore */ }
+    try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.v === 1) { const d = dflt(); S = Object.assign(d, j); S.opt = Object.assign(d.opt, j.opt || {}); S.mm = Object.assign(d.mm, j.mm || {}); S.f = j.f || {}; S.ov = j.ov || {}; S.ac = Array.isArray(j.ac) ? j.ac : [];
+      /* older saves had five clock boxes + two flight-time boxes: keep the first typed clock as the one anchor, and the typed LOG/flight time as the one LOG */
+      const OR = ['step', 'start', 'taxi', 'takeoff'], F = S.f;
+      if (!S.tt) for (const k of OR) if (F[k] != null && String(F[k]).trim() !== '') { S.tt = String(F[k]).trim(); S.tk = k; break; }
+      if (!S.lg) S.lg = F.log != null && String(F.log).trim() !== '' ? String(F.log).trim() : (j.dur && j.dur !== '1.5' ? String(j.dur) : '');
+      OR.concat(['landing', 'log']).forEach(k => { delete F[k]; }); delete S.dur;
+    } } catch (e) { /* ignore */ }
   };
   let saveErr = false;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); saveErr = false; } catch (e) { if (!saveErr && typeof toast === 'function') toast('บันทึกไม่ได้ — พื้นที่เก็บข้อมูลเต็ม (ลดขนาดรูป)', 'err'); saveErr = true; } };
@@ -32356,18 +32362,19 @@ const MC = (function () {
     const own = k => f[k] != null && String(f[k]).trim() !== '';
     const R = { X, B };
     const put = (k, auto) => { R[k] = own(k) ? { v: String(f[k]).trim(), own: 1 } : { v: auto == null ? '' : String(auto), own: 0 }; };
-    /* clock: step → start → taxi → take-off are 10 min apart (the unit's lookup table); take-off from Navigation when nothing typed */
-    let t = { step: parseT(f.step), start: parseT(f.start), taxi: parseT(f.taxi), takeoff: parseT(f.takeoff) };
-    const etd = X.nav && X.nav.v ? parseT(X.nav.v.etd) : null, tOwn = { step: t.step, start: t.start, taxi: t.taxi, takeoff: t.takeoff };
-    const ord = ['step', 'start', 'taxi', 'takeoff'];
-    for (let i = 1; i < 4; i++) if (t[ord[i]] == null && t[ord[i - 1]] != null) t[ord[i]] = t[ord[i - 1]] + 10;
-    if (t.takeoff == null && etd != null) t.takeoff = etd;
-    for (let i = 2; i >= 0; i--) if (t[ord[i]] == null && t[ord[i + 1]] != null) t[ord[i]] = t[ord[i + 1]] - 10;
-    ord.forEach(k => { R[k] = own(k) ? { v: String(f[k]).trim(), own: 1 } : { v: t[k] != null ? fmtT(t[k]) : '', own: 0 }; });
-    R.etdSrc = t.takeoff != null && tOwn.takeoff == null && tOwn.taxi == null && tOwn.start == null && tOwn.step == null && etd != null;
-    const dur = num(s.dur), eta = X.nav && X.nav.foot && X.nav.foot.eta ? parseT(String(X.nav.foot.eta).replace(/[^0-9:.]/g, '').slice(0, 5)) : null;
-    put('landing', t.takeoff != null && fin(dur) ? fmtT(t.takeoff + dur * 60) : eta != null ? fmtT(eta) : '');
-    put('log', fin(dur) ? trimN(dur, 2) : '');
+    /* clock: ONE time is typed (and which of STEP / START / TAXI / TAKEOFF it is); the others follow 10 min apart (the unit's lookup table). Nothing typed → take-off = ETD from Navigation.
+       LOG = typed flight time, else the logged hours of the chosen sortie code; LANDING = take-off + LOG (else the ETA from Navigation) — neither is typed on its own */
+    const ord = ['step', 'start', 'taxi', 'takeoff'], t0 = parseT(s.tt), bi = ord.indexOf(s.tk) >= 0 ? ord.indexOf(s.tk) : 3;
+    const etd = X.nav && X.nav.v ? parseT(X.nav.v.etd) : null, base = t0 != null ? t0 : etd, ai = t0 != null ? bi : 3, t = {};
+    if (base != null) ord.forEach((k, i) => { t[k] = base + (i - ai) * 10; });
+    ord.forEach(k => { R[k] = { v: t[k] != null ? fmtT(t[k]) : '', own: k === ord[ai] && t0 != null ? 1 : 0 }; });
+    R.etdSrc = t0 == null && etd != null;
+    const hr = c => { for (const g of SORT.groups || []) for (const i of g.i) if (i[0] === c) { const m = /\/\s*([๐-๙0-9]+(?:[.,][๐-๙0-9]+)?)/.exec(i[3] || ''); if (m) { const n = num(m[1].replace(/[๐-๙]/g, d => '๐๑๒๓๔๕๖๗๘๙'.indexOf(d))); if (fin(n)) return n; } } return NaN; };
+    const sh = [f.sort1, f.sort2].map(x => hr(String(x == null ? '' : x).trim())).filter(fin)[0];
+    const lgT = num(s.lg), dur = fin(lgT) ? lgT : fin(sh) ? sh : NaN, eta = X.nav && X.nav.foot && X.nav.foot.eta ? parseT(String(X.nav.foot.eta).replace(/[^0-9:.]/g, '').slice(0, 5)) : null;
+    R.logSrc = fin(lgT) ? 'typed' : fin(sh) ? 'sortie' : '';
+    R.landing = { v: t.takeoff != null && fin(dur) ? fmtT(t.takeoff + dur * 60) : eta != null ? fmtT(eta) : '', own: 0 };
+    R.log = { v: fin(dur) ? trimN(dur, 2) : '', own: fin(lgT) ? 1 : 0 };
     put('callsign', bc.callsign || ''); put('area', bc.area || ''); put('mission', bc.symbol || '');
     R.sorties = [f.sort1, f.sort2].map(x => String(x == null ? '' : x).trim()).filter(Boolean);                       // sortie codes (รหัสเที่ยว): own + instructor
     if (R.sorties.length) R.mission = { v: R.sorties.join(' / '), own: 1 }; else if (own('mission')) R.mission = { v: String(f.mission).trim(), own: 1 }; put('iff', bc.iff || ''); put('manual', '-');
@@ -32727,7 +32734,7 @@ const MC = (function () {
   }
   function drawPreview() {
     if (!pvHost) return; const s = st(), R = resolve(); pvInfo = R;
-    phs.forEach(p => { try { const v = p.fn(R); p.el.placeholder = v == null ? '' : String(v); } catch (e) { /* ignore */ } });
+    phs.forEach(p => { try { const v = p.fn(R); if (p.el.nodeType === 1 && p.el.tagName === 'INPUT') p.el.placeholder = v == null ? '' : String(v); else p.el.textContent = v == null ? '' : String(v); } catch (e) { /* ignore */ } });
     pvHost.replaceChildren();
     if (s.tab === 'card') {
       pvHost.append(T('div', 'mcd-pvh', 'ตัวอย่างหน้ากระดาษ A4 แนวนอน · ซ้าย / ขวา = บัตรคนละใบ (ตัดตามเส้นประกลาง)'));
@@ -32784,9 +32791,13 @@ const MC = (function () {
         h('div', { class: 'mcd-f' }, h('span', null, 'MISSION · รหัสเที่ยว ๒ (ครู)'), combo(f, 'sort2', false)),
         note('รายการจาก รปป. บน.๕ - ๐๓ - ๐๐๑ ผนวก ก (ฉบับร่าง) — ' + SORTIES.length + ' รหัส (ชุดที่ตั้งเป็นช่วง เช่น ฝพ.๖-๗ แยกเป็นรหัสละเที่ยว): วัฏภาค ๑ ๒ ๓, หัวหน้าหมู่บิน, ครูการบิน, ฟื้นฟู, ฟื้นฟูครู · ค้นหาด้วยรหัส ชื่อเที่ยวบิน หรือหมวดได้ (พิมพ์เลขไทยหรืออารบิกก็ได้) · เลือกครบสองช่องแล้วบัตรจะแสดงสองบรรทัด · ไม่เลือกเลยจะใช้สัญลักษณ์ภารกิจจาก Briefing'),
         fld('ข้อความ MISSION อื่น (ใช้เมื่อไม่เลือกรหัสเที่ยว)', reg(tin(f, 'mission', ''), r => r.mission.v)),
-        h('div', { class: 'mcd-g4' }, [ft('step', 'STEP'), ft('start', 'START'), ft('taxi', 'TAXI'), ft('takeoff', 'TAKEOFF')]),
-        note('STEP → START → TAXI → TAKEOFF ห่างกันครั้งละ 10 นาที (ตามตารางของฝูง) กรอกช่องใดช่องหนึ่งช่องอื่นเลื่อนตาม · ถ้าไม่กรอกเลยจะใช้เวลาออกเดินทางจาก Navigation'),
-        h('div', { class: 'mcd-g4' }, [fld('เวลาบิน (ชม.)', sel(s, 'dur', [['', '— ไม่กำหนด —'], ['1', '1.0'], ['1.5', '1.5'], ['2', '2.0'], ['2.5', '2.5'], ['3', '3.0']])), ft('landing', 'LANDING'), ft('log', 'LOG'), fld('หน่วยน้ำมัน', sel(s, 'fu', [['gal', 'gal'], ['kg', 'kg'], ['lb', 'lb']]))]),
+        h('div', { class: 'mcd-g4' }, [
+          fld('เวลา (กรอกครั้งเดียว)', reg(tin(s, 'tt', '', { inputmode: 'numeric', maxlength: 5 }), r => r.etdSrc ? r.takeoff.v : '')),
+          fld('เวลานี้คือของ', sel(s, 'tk', [['takeoff', 'TAKEOFF'], ['step', 'STEP'], ['start', 'START'], ['taxi', 'TAXI']])),
+          fld('LOG · เวลาบิน (ชม.)', reg(tin(s, 'lg', '', { inputmode: 'decimal', maxlength: 5 }), r => r.log.v || '')),
+          fld('หน่วยน้ำมัน', sel(s, 'fu', [['gal', 'gal'], ['kg', 'kg'], ['lb', 'lb']]))]),
+        h('p', { class: 'mcd-note mcd-clk' }, reg(document.createElement('span'), r => r.takeoff.v ? 'STEP ' + r.step.v + ' → START ' + r.start.v + ' → TAXI ' + r.taxi.v + ' → TAKEOFF ' + r.takeoff.v + (r.landing.v ? ' → LANDING ' + r.landing.v : '') + (r.log.v ? ' · LOG ' + r.log.v + ' ชม.' : '') : 'ยังไม่มีเวลา — กรอกเวลาด้านบน หรือใส่ ETD ใน Navigation')),
+        note('กรอกเวลาเดียว (เช่น 0900) แล้วเลือกว่าเป็นเวลาของ STEP / START / TAXI / TAKEOFF ช่องอื่นเลื่อนตามกันครั้งละ 10 นาที · LANDING = TAKEOFF + LOG · LOG ดึงจากชั่วโมงบินของรหัสเที่ยวที่เลือกด้านบนอัตโนมัติ (พิมพ์ทับได้ เช่น 1.3) · ถ้าไม่กรอกเวลาเลยจะใช้ ETD จาก Navigation'),
         h('div', { class: 'mcd-g4' }, [ft('fuel', 'FUEL LOAD'), ft('bingo', 'BINGO'), ft('joker', 'JOKER')]),
         fld('AIRWORK', reg(tin(f, 'airwork', ''), r => r.airwork.v)),
         fld('METAR', metarBox(f, B))
