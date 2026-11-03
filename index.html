@@ -2598,6 +2598,27 @@ html[data-brs-show="1"] body{overflow:hidden}
 .brs-wxe{border:1px solid var(--line2,#27394b);border-radius:8px;padding:6px 8px;margin-bottom:8px}
 .brs-wxd summary{cursor:pointer;font-size:13px;color:var(--mute)}
 
+/* ===== NOTAM layer on the map + popup ===== */
+.nt-lab span{display:inline-block;color:#fff;font:700 11px/16px system-ui,sans-serif;padding:0 5px;border-radius:3px;white-space:nowrap;box-shadow:0 0 0 1px #fff}
+.nt-pop{font-size:13px;line-height:1.45;max-width:340px}.nt-pop .nt-th{margin:6px 0;padding:6px 8px;background:#f6f1f1;border-left:3px solid #e11d1d;color:#222;white-space:normal}
+.nt-pop pre{white-space:pre-wrap;font-size:11px;margin:4px 0 0;color:#333}
+
+/* ===== Briefing 5.2 NOTAM slides ===== */
+.brs-ntc{position:absolute;inset:120px 0 60px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.brs-ntbig{font-size:150px;line-height:1.15;font-weight:700;color:#e11d1d}
+.brs-ntname{font-size:48px;line-height:1.6;font-weight:700;color:#e11d1d}.brs-ntsub{font-size:46px;line-height:1.6;color:#111;font-weight:700}.brs-ntsm{font-size:28px;line-height:1.8;color:#334}
+.brs-body.brs-nt{display:grid;grid-template-columns:minmax(0,1fr) 560px;gap:18px;align-items:start}
+.brs-nt .brs-col{min-width:0}
+.brs-ntraw{background:#ffffffee;border:1px solid #9aa7b3;border-radius:5px;padding:6px 10px;font-family:var(--mono,monospace);font-size:.6em;line-height:1.5;word-break:break-word;margin-bottom:.5em}
+.brs-ntrh{font-weight:700;color:#1d3a8a}
+.brs-ntth{font-size:1.1em;margin-top:.2em}.brs-ntl{line-height:1.95}.brs-ntl.dim{color:#334}
+.brs-hot{color:#e11d1d}
+.brs-ntwin{color:#1d3a8a;font-weight:700;margin-top:.2em}.brs-ntwin.warn{color:#b45309}
+.brs-ntr{display:flex;flex-direction:column;gap:6px}.brs-ntr svg{width:560px;height:auto;display:block;border-radius:4px}
+.brs-ntfn{font-size:12px;line-height:1.3;color:#556;text-align:right}
+.brs-ntp{display:flex;gap:6px}.brs-ntp .brs-pics{display:flex;gap:6px;width:100%}.brs-ntp img{max-height:150px;object-fit:cover;flex:1;min-width:0;border-radius:4px}
+.brs-ntpre{white-space:pre-wrap;font-size:12px;background:var(--bg2,#0e1a26);padding:6px 8px;border-radius:6px;margin:0}
+
 </style>
 </head>
 <body class="m-0 overflow-hidden bg-tac-bg font-tac text-slate-200">
@@ -29957,7 +29978,7 @@ const BRIEF_SLIDES = function (C) {
     D0.push({ id: 'obj', name: '4.2 OBJECTIVE' + (more().length ? ' · MISSION 1 — ' + missionShort(S.prim) : ''), ed: (p, rd) => edObj(p, rd, 0), draw: st => drawObj(st, 0) });
     more().forEach((m, i) => D0.push({ id: 'obj' + (i + 1), name: '4.2 OBJECTIVE · MISSION ' + (i + 2) + ' — ' + missionShort(m), ed: (p, rd) => edObj(p, rd, i + 1), draw: st => drawObj(st, i + 1) }));
     D0.push({ id: 'ovw', name: '4.3 MISSION OVERVIEW', ed: edOvw, draw: drawOvw });
-    D0.push(txtSlide(TXT.prm1)); D0.push({ id: 'prm3', name: '5. PREMISSION REMARK — 5.3 BIRD AND OTHER WILD LIFE', ed: (p, rd) => edBird(p, TXT.prm3, rd), draw: st => drawBird(st, TXT.prm3) });
+    D0.push(txtSlide(TXT.prm1)); ntSlides().forEach(d => D0.push(d)); D0.push({ id: 'prm3', name: '5. PREMISSION REMARK — 5.3 BIRD AND OTHER WILD LIFE', ed: (p, rd) => edBird(p, TXT.prm3, rd), draw: st => drawBird(st, TXT.prm3) });
     D0.push({ id: 'prm4', name: '5. PREMISSION REMARK — 5.4 WEATHER', ed: (p, rd) => edWx(p, TXT.prm4, rd), draw: st => drawWx(st, TXT.prm4) }); D0.push(txtSlide(TXT.prm5));
     D0.push({ id: 'mc1', name: '6.1 MISSION CARD · FRONT', ed: edMc1, draw: drawMc1 });
     D0.push({ id: 'mc2', name: '6.2 MISSION CARD · W&B / PERFORMANCE', ed: edMc2, draw: drawMc2 });
@@ -30294,6 +30315,86 @@ const BRIEF_SLIDES = function (C) {
       field('เพิ่มสนาม', combo(items, { ph: 'ค้นหา / พิมพ์รหัสสนาม แล้วกด Enter…', aria: 'เพิ่มสนามสำหรับ METAR TAF', free: 1, onPick: x => add(x.v === 'tx' ? x.label : x.v) })), list,
       field('หมายเหตุใต้ข้อมูล (บรรทัดแรกคือหัวข้อ 5.4 — ข้อความต่อจากบรรทัดแรกจะแสดงใต้ข้อมูล)', ta(txtOf(d), v => { S.txt[d.id] = v; }, '', rd, 3)), E('brs-fine', 'p', 'ลมที่ตั้งในแท็บ Navigation จะแสดงต่อท้ายอัตโนมัติ (ถ้ามี) · แนบภาพ Windy ได้ด้านล่าง'), picsEd(d.id, rd, 'ภาพ Windy / ภาพถ่ายดาวเทียม'));
   }
+  /* ---- 5.2 NOTAMs : cover · one divider per aerodrome · one slide per NOTAM (original + Thai draft + drawn map) ---- */
+  const NTM = () => (typeof NOTAM !== 'undefined' ? NOTAM : null);
+  let ntMsg = '', ntSub = false;
+  const ntStamp = N => { const s = N && N.state(); if (!s) return ''; const t = new Date((s.hdr && s.hdr.issue != null ? s.hdr.issue : s.at) + 7 * 3600000); return t.getUTCDate() + ' ' + THM[t.getUTCMonth()] + ' ' + String(t.getUTCFullYear() + 543).slice(2) + ', ' + p2(t.getUTCHours()) + p2(t.getUTCMinutes()); };
+  function ntSlides() {
+    const N = NTM(), out = [], cnt = N ? N.items().length : 0;
+    out.push({ id: 'nt', name: '5.2 NOTAMs' + (cnt ? ' · ' + cnt + ' รายการ' : ' (ยังไม่ได้นำเข้า)'), ed: edNtCover, draw: drawNtCover });
+    if (!N || !N.state()) return out;
+    N.groups().forEach(g => {
+      const lab = g.apt || 'EN-ROUTE';
+      out.push({ id: 'ntg_' + (g.apt || 'ENR'), name: '5.2 NOTAM · ' + lab + (g.apt && g.name ? ' (' + g.name + ')' : ''), ed: (p, rd) => edNtGroup(p, g, rd), draw: st => drawNtGroup(st, g) });
+      g.items.forEach(it => out.push({ id: N.slideId(it), name: '5.2 NOTAM · ' + lab + ' · ' + it.num, ed: (p, rd) => edNtItem(p, it, g, rd), draw: st => drawNtItem(st, it, g) }));
+    });
+    return out;
+  }
+  const HOT = /(ห้ามใช้งาน|ใช้งานไม่ได้|ชำรุด|ปิดใช้งาน|ปิด|เครน|สิ่งกีดขวาง|หวงห้าม|ห้ามบิน|อันตราย|ล่าช้า|ต้องขออนุมัติ[^\s,]*|ต้องปฏิบัติตาม[^\s,]*|อยู่ระหว่างทดสอบ)/g;
+  const hotLine = t => { const k = []; let last = 0, m; HOT.lastIndex = 0; while ((m = HOT.exec(t))) { if (m.index > last) k.push(t.slice(last, m.index)); k.push(h('b', { class: 'brs-hot' }, m[0])); last = m.index + m[0].length; } if (last < t.length) k.push(t.slice(last)); return E('brs-ntl', 'div', k.length ? k : t); };
+  function drawNtCover(st) {
+    const N = NTM(), s = N && N.state(), c = E('brs-ntc', 'div');
+    c.append(E('brs-ntbig', 'div', 'NOTAM'), E('brs-ntsub', 'div', s ? 'Update : ' + ntStamp(N) : 'ยังไม่ได้นำเข้า NOTAM'));
+    if (s) { const w = N.win(); c.append(E('brs-ntsm', 'div', 'ช่วงเวลาบิน ' + thStamp(w.a).replace(/ ICT$/, '').replace(':', '.') + ' – ' + thStamp(w.b).replace(/ ICT$/, '').replace(':', '.') + ' น. · ' + N.items().length + ' รายการ')); }
+    st.append(c);
+  }
+  function drawNtGroup(st, g) {
+    const c = E('brs-ntc', 'div'); c.append(E('brs-ntbig', 'div', g.apt || 'EN-ROUTE'));
+    if (g.apt && g.name) c.append(E('brs-ntname', 'div', '(' + g.name + ')')); else if (!g.apt) c.append(E('brs-ntname', 'div', '(นอกเขตสนามบิน)'));
+    c.append(E('brs-ntsm', 'div', g.items.length ? 'NOTAM ' + g.items.length + ' รายการ' : 'ไม่มี NOTAM ของสนามบินนี้ในไฟล์ที่นำเข้า'));
+    st.append(c);
+  }
+  function drawNtItem(st, it, g) {
+    const N = NTM(), body = E('brs-body brs-nt', 'div'), stt = N.status(it), pp = pics(N.slideId(it)), th = N.thaiOf(it), cl = N.core;
+    const raw = E('brs-ntraw', 'div', [E('brs-ntrh', 'div', (it.ids.length > 1 ? it.ids.join(' = ') : it.num) + (it.rep ? '  (แทน ' + it.rep + ')' : '')),
+      E('', 'div', 'FROM ' + cl.fmtUtc(it.from) + '  TO ' + (it.to != null ? cl.fmtUtc(it.to) : 'PERM') + (it.est ? ' EST' : '')), E('', 'div', 'A) ' + (it.a || '')), it.q.raw ? E('', 'div', 'Q) ' + it.q.raw) : null, it.d ? E('', 'div', 'D) ' + it.d) : null].concat(('E) ' + it.e).split('\n').map(l => E('', 'div', l))).concat([it.f ? E('', 'div', 'F) ' + it.f) : null, it.g ? E('', 'div', 'G) ' + it.g) : null]));
+    const vl = cl.vlim(it), thl = th.split('\n').map(hotLine);
+    const left = E('brs-col', 'div', [raw, E('brs-ntth', 'div', thl), it.d ? E('brs-ntl dim', 'div', 'ช่วงเวลา: ' + cl.utcRange(it.d).replace(/^DAILY/i, 'ทุกวัน')) : null, vl ? E('brs-ntl', 'div', 'ความสูง ' + vl) : null,
+      E('brs-ntwin' + (stt === 'active' ? '' : ' warn'), 'div', cl.windowTh(it) + (stt === 'active' ? '' : '  ·  ' + N.STH[stt]))]);
+    const svg = N.mapSvg(it, { w: 560, h: pp ? 300 : 470 });
+    const right = E('brs-ntr', 'div', [svg || E('brs-empty', 'div', 'ไม่มีพิกัดให้วาดแผนที่'), E('brs-ntfn', 'div', 'ภาพวาดจากพิกัด — ไม่ใช่ภาพดาวเทียม'), pp ? E('brs-ntp', 'div', pp) : null]);
+    body.append(left, right); st.append(head('', g.apt || ('EN-ROUTE' + (it.locName ? ' · ' + it.locName : ''))), body);
+  }
+  function edNtCover(p, rd) {
+    const N = NTM(); if (!N) { p.append(E('brs-fine', 'p', 'โมดูล NOTAM ไม่พร้อมใช้งาน')); return; }
+    const s = N.state(), msg = E('brs-fine bird-msg', 'p', ntMsg), say = t => { ntMsg = t; msg.textContent = t; };
+    const done = r => { say('นำเข้าแล้ว ' + r.items + ' รายการ' + (r.dup ? ' (รวมรายการซ้ำ ' + r.dup + ')' : '') + ' · ' + r.groups + ' กลุ่ม (สนามบิน / en-route)'); rd(true); };
+    const fi = h('input', { type: 'file', accept: '.pdf,.txt,.md,text/plain,application/pdf', hidden: true, 'data-nt': 'file', onchange: async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; say('กำลังอ่าน ' + f.name + ' …'); try { done(await N.importFile(f)); } catch (e) { say('นำเข้าไม่ได้: ' + (e && e.message || e)); } } });
+    const ta0 = h('textarea', { class: 'brs-in', rows: 4, placeholder: 'หรือวางข้อความ PIB / NOTAM ที่คัดลอกมา (รูปแบบ SOFIA หรือ NOTAM มาตรฐาน ICAO) แล้วกด “นำเข้าข้อความ”', 'aria-label': 'วางข้อความ NOTAM', 'data-nt': 'paste' });
+    p.append(E('brs-fine', 'p', '5.2 NOTAMs — นำเข้าไฟล์ PIB (PDF จาก SOFIA / ไฟล์ข้อความ) แล้วแอปแยกตามสนามบิน แปลไทย (ร่าง) และวาดตำแหน่งให้ สไลด์สร้างต่อท้ายหน้านี้ · ติ๊ก ☑ ที่รายการสไลด์ด้านซ้ายเพื่อเลือก NOTAM ที่จะแสดง'),
+      E('brs-btns', 'div', [h('button', { type: 'button', class: 'btn sm pri', 'data-nt': 'pick', onclick: () => fi.click() }, '⇪ นำเข้าไฟล์ PIB (PDF / ข้อความ)'), fi, s ? h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { if (confirm('ล้างข้อมูล NOTAM ที่นำเข้า?')) { N.clear(); say(''); rd(true); } } }, 'ล้างข้อมูล NOTAM') : null]),
+      ta0, E('brs-btns', 'div', h('button', { type: 'button', class: 'btn sm', 'data-nt': 'text', onclick: () => { try { done(N.importText(ta0.value, '')); } catch (e) { say('นำเข้าไม่ได้: ' + (e && e.message || e)); } } }, 'นำเข้าข้อความ')), msg);
+    if (s) {
+      const w = N.win(), gs = N.groups(), cnt = k => N.items().filter(i => N.status(i) === k).length;
+      p.append(E('brs-fine', 'p', 'ไฟล์: ' + (s.label || 'ข้อความที่วาง') + ' · นำเข้า ' + thStamp(s.at) + (s.hdr && s.hdr.rules ? ' · ' + s.hdr.rules + ' ' + (s.hdr.from || '') + '→' + (s.hdr.to || '') + ' · สำรอง ' + ((s.hdr.alts || []).join(', ') || '-') : '')),
+        E('brs-fine', 'p', 'ช่วงเวลาบิน ' + thStamp(w.a) + ' – ' + thStamp(w.b) + ' · มีผล ' + cnt('active') + ' · ยังไม่เริ่ม ' + cnt('future') + ' · หมดอายุ ' + cnt('expired')),
+        E('brs-fine', 'p', gs.map(g => (g.apt || 'EN-ROUTE') + ' ' + g.items.length).join('  ·  ')),
+        E('brs-btns', 'div', [h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { N.items().forEach(i => { if (N.status(i) === 'active') delete S.off[N.slideId(i)]; else S.off[N.slideId(i)] = 1; }); save(); rd(true); } }, 'เลือกเฉพาะ NOTAM ที่มีผลในช่วงเวลาบิน'), h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { N.items().forEach(i => { delete S.off[N.slideId(i)]; }); save(); rd(true); } }, 'เลือก NOTAM ทั้งหมด')]));
+    }
+    const di = N.dictInfo(), fd = h('input', { type: 'file', accept: '.md,.txt,.csv,.json,text/*,application/json', hidden: true, 'data-nt': 'dictfile', onchange: async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; try { const n = N.importDict(await f.text()); say('เพิ่มพจนานุกรม ' + n + ' คำจาก ' + f.name); rd(true); } catch (e) { say('นำเข้าพจนานุกรมไม่ได้: ' + (e && e.message || e)); } } });
+    p.append(E('brs-fine', 'p', 'พจนานุกรมแปลไทย: ตั้งต้น ' + di.base + ' คำ (จากคู่มือ NOTAM) + ของฉัน ' + di.user + ' คำ · นำเข้าไฟล์ตาราง .md (ตัวย่อ | คำเต็ม | คำแปล), .csv (ตัวย่อ,คำแปล) หรือ .json ได้ คำของฉันจะทับคำตั้งต้น · คำแปลเป็น “ร่าง” จากการแทนคำ ต้องตรวจเทียบกับ NOTAM ต้นฉบับก่อนใช้บรีฟ'),
+      E('brs-btns', 'div', [h('button', { type: 'button', class: 'btn sm', 'data-nt': 'dict', onclick: () => fd.click() }, '⇪ นำเข้าพจนานุกรม'), fd, di.user ? h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { if (confirm('ล้างคำที่เพิ่มเอง ' + di.user + ' คำ?')) { N.clearDict(); rd(true); } } }, 'ล้างพจนานุกรมของฉัน') : null]));
+  }
+  function edNtGroup(p, g, rd) {
+    const N = NTM(), s = N.state();
+    p.append(E('brs-fine', 'p', (g.apt || 'EN-ROUTE') + ' — ' + (g.items.length ? 'NOTAM ' + g.items.length + ' รายการ (ดูทีละรายการที่สไลด์ถัดไป)' : 'ไม่มี NOTAM ของสนามบินนี้ในไฟล์ที่นำเข้า — ตรวจว่าไฟล์ PIB ครบทุกสนามหรือไม่')));
+    if (g.apt) p.append(field('ชื่อสนามบิน (แสดงใต้รหัส)', inp(g.name, v => { N.setName(g.apt, v); }, 'เช่น PRACHUAP AIRPORT', rd)));
+    g.items.forEach(i => p.append(E('brs-fine', 'p', i.num + ' · ' + N.core.windowTh(i) + ' · ' + N.STH[N.status(i)] + ' — ' + N.core.flat(i.e).slice(0, 90))));
+  }
+  function edNtItem(p, it, g, rd) {
+    const N = NTM(), a = N.auto(it), cur = N.thaiOf(it), id = N.slideId(it), stt = N.status(it);
+    p.append(E('brs-fine', 'p', it.num + (it.ids.length > 1 ? '  (ซ้ำ ' + it.ids.join(' = ') + ')' : '') + ' · ' + (g.apt || 'EN-ROUTE') + ' · ' + N.STH[stt] + ' · ' + N.core.windowTh(it)),
+      E('brs-fine', 'p', 'Q-code: ' + (N.core.qTh(it.q) || (it.q.code || '-')) + (N.core.vlim(it) ? ' · ความสูง ' + N.core.vlim(it) : '')),
+      field('NOTAM ต้นฉบับ (แก้ไม่ได้)', h('pre', { class: 'brs-ntpre' }, (it.q.raw ? 'Q) ' + it.q.raw + '\n' : '') + (it.d ? 'D) ' + it.d + '\n' : '') + 'E) ' + it.e + (it.f ? '\nF) ' + it.f : '') + (it.g ? '\nG) ' + it.g : ''))),
+      field('คำแปลไทย (ร่างจากพจนานุกรม — แก้ไขได้ · เว้นบรรทัดเพื่อขึ้นบรรทัดใหม่)', ta(cur, v => { N.setThai(it, v); }, '', rd, 6)),
+      E('brs-btns', 'div', h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { N.setThai(it, ''); rd(true); } }, 'คืนค่าแปลอัตโนมัติ')));
+    if (a.unknown.length) {
+      const box = E('brs-fine', 'p', 'คำที่ยังไม่มีในพจนานุกรม (ยังเป็นภาษาอังกฤษในคำแปล): ');
+      p.append(box); a.unknown.forEach(w => { const i2 = h('input', { type: 'text', class: 'brs-in sm', placeholder: 'คำแปลของ ' + w, 'aria-label': 'คำแปลของ ' + w, style: 'width:150px;margin:0 4px' }); box.append(h('b', null, w), i2, h('button', { type: 'button', class: 'btn sm', onclick: () => { if (N.addWord(w, i2.value)) rd(true); } }, '＋ เพิ่ม'), ' '); });
+    }
+    p.append(picsEd(id, rd, 'ภาพถ่ายดาวเทียม / ภาพแผนที่ของสนามบิน (ถ้ามี) — แสดงใต้แผนที่วาด'));
+  }
+
   /* ---- generic text slides ---- */
   function drawTxt(st, d) {
     const body = E('brs-body', 'div'), tx = textBlocks(txtOf(d)), pp = d.img ? pics(d.id) : null, au = d.autoRk && S.pull.nav ? A(d.autoRk) : null;
@@ -30368,7 +30469,7 @@ const BRIEF_SLIDES = function (C) {
   function edArea(p, i, rd) {
     const a = areas()[i];
     p.append(field('17.1 ชื่อพื้นที่', inp(a.n, v => { a.n = v; }, 'AREA 1 (VTD5A)', rd)), field('17.1 ขอบเขต (บรรทัดละข้อ เช่น N …, E …)', ta(a.d, v => { a.d = v; }, '', rd, 5)), field('17.2 ความสูง', inp(a.alt, v => { a.alt = v; }, '4000’', rd)), field('17.3 SEQUENCE / TRAFFIC', inp(a.seq, v => { a.seq = v; }, '-', rd)), picsEd('area' + i, rd, 'แนบแผนที่พื้นที่ (ภาพหน้าจอจากแท็บ Tactical / Photo ฯลฯ)'),
-      h('button', { type: 'button', class: 'btn sm', hidden: areas().length > 1 ? null : true, onclick: () => { areas().splice(i, 1); delete S.img['area' + i]; save(); rd(true, 0); } }, 'ลบพื้นที่นี้'));
+      h('button', { type: 'button', class: 'btn sm', hidden: areas().length > 1 ? null : true, onclick: () => { areas().splice(i, 1); delete S.img['area' + i]; save(); rd(true); } }, 'ลบพื้นที่นี้'));
   }
   /* ---- extra slide ---- */
   function drawExtra(st, i) {
@@ -30377,7 +30478,7 @@ const BRIEF_SLIDES = function (C) {
   }
   function edExtra(p, i, rd) {
     const x = S.extra[i];
-    p.append(field('หัวข้อสไลด์', inp(x.t, v => { x.t = v; }, '', rd)), field('เนื้อหา (ชิดซ้าย = หัวข้อ · เว้น 2 ช่อง = ข้อย่อย)', ta(x.x, v => { x.x = v; }, '', rd, 10)), picsEd('x' + i, rd), h('button', { type: 'button', class: 'btn sm', onclick: () => { S.extra.splice(i, 1); delete S.img['x' + i]; save(); rd(true, 0); } }, 'ลบสไลด์นี้'));
+    p.append(field('หัวข้อสไลด์', inp(x.t, v => { x.t = v; }, '', rd)), field('เนื้อหา (ชิดซ้าย = หัวข้อ · เว้น 2 ช่อง = ข้อย่อย)', ta(x.x, v => { x.x = v; }, '', rd, 10)), picsEd('x' + i, rd), h('button', { type: 'button', class: 'btn sm', onclick: () => { S.extra.splice(i, 1); delete S.img['x' + i]; save(); rd(true); } }, 'ลบสไลด์นี้'));
   }
 
   /* ---------------- editor widgets ---------------- */
@@ -30431,7 +30532,7 @@ const BRIEF_SLIDES = function (C) {
       h('button', { type: 'button', class: 'btn ghost', onclick: () => { if (confirm('ล้างข้อมูลสไลด์บรีฟทั้งหมด (ชื่อผู้เข้าร่วม ภารกิจ รูป ฯลฯ)?')) { S = dflt(); save(); rebuildList(); go(0); } } }, 'ล้างข้อมูลสไลด์')]);
     const side = E('brs-side2', 'div', [E('brs-fine', 'p', 'ติ๊ก ☑ = รวมสไลด์ในการบรีฟ'), listEl]);
     wrap.append(bar, E('brs-cols', 'div', [side, E('brs-mid', 'div', [prevEl, edBody])]));
-    host = wrap; rebuildList(); S.i = Math.min(S.i, DK.length - 1); setTimeout(() => { drawEd(); redrawPrev(); const on = listEl.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' }); }, 0);
+    host = wrap; if (!ntSub && NTM()) { ntSub = true; NTM().onChange(() => { if (!host || !host.isConnected || !listEl) return; S.i = Math.min(S.i, 9999); rebuildList(); S.i = Math.min(S.i, DK.length - 1); drawEd(); redrawPrev(); }); } rebuildList(); S.i = Math.min(S.i, DK.length - 1); setTimeout(() => { drawEd(); redrawPrev(); const on = listEl.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' }); }, 0);
     if (!mkEditor._r) { mkEditor._r = 1; window.addEventListener('resize', () => { if (host && host.isConnected) redrawPrev(); }); }
     return wrap;
   }
@@ -31594,6 +31695,446 @@ const OAIP = (function () {
   AERO.register('oaipAs', '🛩 OpenAIP Core API · CTR / TMA / VTR / VTD / VTP (click for limits)', GA, true);
 
   return { DB, S, loaded, ensureData, refresh, search, remoteSearch, openItem, showAt, airspacesAt, popupEl, limTxt, NORM, cacheKeys, cacheClear, sGet, api, draw, redraw, GP, GA, BASE, KINDS };
+}());
+
+;
+window.NOTAM_DICT={"ABV":{"en":"Above","th":"เหนือกว่า / สูงกว่า"},"ACFT":{"en":"Aircraft","th":"อากาศยาน / เครื่องบิน"},"AD":{"en":"Aerodrome","th":"สนามบิน"},"ALS":{"en":"Approach Lighting System","th":"ระบบไฟนำร่องเข้าสู่ทางวิ่ง"},"ALT":{"en":"Altitude","th":"ความสูงเหนือระดับน้ำทะเลปานกลาง (MSL)"},"AMSL":{"en":"Above Mean Sea Level","th":"เหนือระดับน้ำทะเลปานกลาง"},"APCH":{"en":"Approach","th":"การบินเข้าใกล้ / การร่อนลงสู่สนามบิน"},"APN":{"en":"Apron","th":"ลานจอดอากาศยาน"},"ARR":{"en":"Arrival / Arriving","th":"การมาถึง / อากาศยานขาเข้า"},"ASHTAM":{"en":"Ash NOTAM","th":"ประกาศแจ้งเตือนพิเศษเกี่ยวกับการปะทุของเถ้าภูเขาไฟ"},"ATC":{"en":"Air Traffic Control","th":"การควบคุมการจราจรทางอากาศ"},"AVBL":{"en":"Available","th":"พร้อมใช้งาน / เปิดให้บริการ"},"BA":{"en":"Braking Action","th":"ประสิทธิภาพการหยุดของเบรกบนทางวิ่ง"},"BCST":{"en":"Broadcast","th":"การถ่ายทอดสัญญาณกระจายเสียง"},"BIRD":{"en":"Bird hazard / Activity","th":"อันตรายจากกิจกรรมของนกในบริเวณสนามบิน"},"BIRDTAM":{"en":"Bird Notice to Airmen","th":"ประกาศแจ้งเตือนกิจกรรมและแนวการอพยพของฝูงนก"},"BLDG":{"en":"Building","th":"อาคาร / สิ่งปลูกสร้าง"},"BTN":{"en":"Between","th":"ระหว่าง (ช่วงเวลาหรือตำแหน่ง)"},"CAT":{"en":"Category","th":"หมวดหมู่ / ขั้น เช่น ILS CAT II, Aircraft CAT C"},"CLSD":{"en":"Closed","th":"ปิดการใช้งาน / ปิดให้บริการ"},"COORD":{"en":"Coordinates","th":"พิกัดทางภูมิศาสตร์"},"CTC":{"en":"Contact","th":"ติดต่อ"},"DEG":{"en":"Degrees","th":"องศา"},"DEP":{"en":"Departure / Departing","th":"การออกเดินทาง / อากาศยานขาออก"},"DISP":{"en":"Displaced","th":"ถูกร่นเข้ามา (เช่น Displaced Threshold)"},"DIST":{"en":"Distance","th":"ระยะทาง"},"DLY":{"en":"Daily","th":"ประจำวัน / ทุกวัน"},"DME":{"en":"Distance Measuring Equipment","th":"เครื่องช่วยการเดินอากาศวัดระยะทาง"},"DRG":{"en":"During","th":"ในระหว่างช่วงเวลา"},"EET":{"en":"Estimated Elapsed Time","th":"เวลาการบินที่คาดหมาย"},"ELEV":{"en":"Elevation","th":"ความสูงของพื้นผิวสนามบินเหนือระดับน้ำทะเล"},"EXC":{"en":"Except","th":"ยกเว้น"},"FAC":{"en":"Facilities","th":"สิ่งอำนวยความสะดวกหรืออุปกรณ์"},"FATO":{"en":"Final Approach & Take-off","th":"พื้นที่ร่อนลงขั้นสุดท้ายและยกตัว (สำหรับเฮลิคอปเตอร์)"},"FIR":{"en":"Flight Information Region","th":"เขตแถลงข่าวการบิน"},"FL":{"en":"Flight Level","th":"ระดับบิน (เช่น FL350 \\= 35,000 ฟุต ที่ความกดอากาศมาตรฐาน)"},"FREQ":{"en":"Frequency","th":"ความถี่วิทยุสื่อสารหรือช่วยเดินอากาศ"},"FST":{"en":"First","th":"ลำดับแรก"},"GND":{"en":"Ground","th":"พื้นผิวทางวิ่ง/ทางขับ หรือการควบคุมภาคพื้น"},"GP":{"en":"Glide Path","th":"อุปกรณ์ส่งสัญญาณมุมร่อนในระบบ ILS"},"GRASS":{"en":"Grass landing area","th":"พื้นที่ลงจอดสนามหญ้า"},"H24":{"en":"Continuous day and night","th":"บริการตลอด 24 ชั่วโมง ต่อเนื่องทั้งกลางวันและกลางคืน"},"HGT":{"en":"Height","th":"ความสูงเหนือจุดอ้างอิงพื้นดิน (AGL)"},"HJ":{"en":"Sunrise to Sunset","th":"ปฏิบัติการเฉพาะช่วงเวลากลางวัน (ตั้งแต่พระอาทิตย์ขึ้นถึงตก)"},"HN":{"en":"Sunset to Sunrise","th":"ปฏิบัติการเฉพาะช่วงเวลากลางคืน (ตั้งแต่พระอาทิตย์ตกถึงขึ้น)"},"HR":{"en":"Hours","th":"ชั่วโมง / เวลาทำการ"},"IDENT":{"en":"Identification","th":"สัญญาณระบุตัวตนของสถานีช่วยเดินอากาศหรือเครื่องบิน"},"ILS":{"en":"Instrument Landing System","th":"ระบบเครื่องช่วยการเดินอากาศเพื่อการร่อนลงด้วยเครื่องวัด"},"INFO":{"en":"Information","th":"ข้อมูลข่าวสาร"},"INOP":{"en":"Inoperative","th":"ใช้งานไม่ได้ / ชำรุด"},"INT":{"en":"Intersection","th":"ทางแยก / จุดตัด"},"LGT":{"en":"Light","th":"ไฟสัญญาณ"},"LGTD":{"en":"Lighted","th":"มีระบบไฟส่องสว่างติดตั้งและเปิดใช้งาน"},"LLZ":{"en":"Localizer","th":"อุปกรณ์ส่งสัญญาณแนวกึ่งกลางทางวิ่งในระบบ ILS"},"LOC":{"en":"Localizer","th":"อุปกรณ์ส่งสัญญาณแนวกึ่งกลางทางวิ่งในระบบ ILS"},"MAINT":{"en":"Maintenance","th":"การบำรุงรักษา / การซ่อมบำรุง"},"MIL":{"en":"Military","th":"ทางทหาร"},"MNM":{"en":"Minimum","th":"ขั้นต่ำ / ต่ำสุด"},"MOD":{"en":"Moderate","th":"ปานกลาง"},"MON-FRI":{"en":"Monday to Friday","th":"วันจันทร์ถึงวันศุกร์"},"NAV":{"en":"Navigation","th":"การเดินอากาศ"},"NAVBL":{"en":"Not Available","th":"ไม่พร้อมให้บริการ / งดใช้งาน"},"NDB":{"en":"Non-Directional Beacon","th":"เครื่องช่วยการเดินอากาศแบบไร้ทิศทาง"},"NIL":{"en":"None","th":"ไม่มี / ไม่มีข้อมูล"},"NM":{"en":"Nautical Miles","th":"ไมล์ทะเล (1 NM \\= 1,852 เมตร)"},"NOTAM":{"en":"Notice to Airmen","th":"ประกาศสำหรับผู้ทำการในอากาศ"},"OBST":{"en":"Obstacle","th":"สิ่งกีดขวางการบิน"},"OPR":{"en":"Operate / Operational / Operator","th":"ดำเนินการ / ปฏิบัติการ / ผู้ดำเนินการ"},"OPS":{"en":"Operations","th":"การปฏิบัติการบิน"},"PAPI":{"en":"Precision Approach Path Indicator","th":"ระบบไฟระบุและช่วยรักษามุมร่อนลงสู่สนามบิน"},"PARL":{"en":"Parallel","th":"ขนาน / ทางคู่ขนาน"},"PERM":{"en":"Permanent","th":"ถาวร"},"PRKG":{"en":"Parking","th":"การจอดอากาศยาน / หลุมจอด"},"PROC":{"en":"Procedure","th":"ขั้นตอนการปฏิบัติการบิน"},"PSN":{"en":"Position","th":"ตำแหน่ง"},"RCLL":{"en":"Runway Centerline Lights","th":"ไฟแนวกึ่งกลางทางวิ่ง"},"REDL":{"en":"Runway Edge Lights","th":"ไฟขอบทางวิ่ง"},"REF":{"en":"Reference","th":"อ้างอิง"},"RLLS":{"en":"Runway Lead-in Lighting System","th":"ระบบไฟนำอากาศยานเข้าสู่ทิศทางวิ่ง"},"RTE":{"en":"Route","th":"เส้นทางบิน"},"RVR":{"en":"Runway Visual Range","th":"ระยะการมองเห็นบนทางวิ่ง"},"RWY":{"en":"Runway","th":"ทางวิ่ง"},"SFC":{"en":"Surface","th":"ผิวพื้น (ระดับดินหรือน้ำ)"},"SID":{"en":"Standard Instrument Departure","th":"แผนภูมิเส้นทางการบินออกด้วยเครื่องวัดมาตรฐาน"},"SNOWTAM":{"en":"Snow NOTAM","th":"ประกาศแจ้งเตือนสภาพหิมะ น้ำแข็ง หรือโคลนบนทางวิ่ง"},"STAR":{"en":"Standard Terminal Arrival Route","th":"แผนภูมิเส้นทางการบินเข้าสู่เขตสนามบินมาตรฐาน"},"SVC":{"en":"Service","th":"การบริการ"},"SWY":{"en":"Stopway","th":"ทางหยุดฉุกเฉินปลายทางวิ่ง"},"TAX":{"en":"Taxiing / Taxi","th":"การเคลื่อนที่ภาคพื้นดินของอากาศยาน"},"TDZ":{"en":"Touchdown Zone","th":"เขตแตะพื้นของทางวิ่ง"},"THR":{"en":"Threshold","th":"หัวทางวิ่ง (จุดเริ่มต้นของส่วนทางวิ่งที่ใช้ลงจอดได้)"},"TIL":{"en":"Until","th":"จนกระทั่ง"},"TKOF":{"en":"Take-off","th":"การวิ่งขึ้น"},"TMA":{"en":"Terminal Control Area","th":"เขตควบคุมประชิดสนามบิน"},"TR":{"en":"Track","th":"แนวทางวิ่งผ่านพื้นโลก"},"TWR":{"en":"Aerodrome Control Tower","th":"หอบังคับการบิน"},"TWY":{"en":"Taxiway","th":"ทางขับ"},"U/S":{"en":"Unserviceable","th":"ชำรุด / ใช้งานไม่ได้"},"UNL":{"en":"Unlimited","th":"ไม่จำกัดเพดานความสูง"},"VMC":{"en":"Visual Meteorological Conditions","th":"สภาวะอากาศที่สามารถบินด้วยสายตาได้"},"VOLMET":{"en":"Meteorological Information for Aircraft in flight","th":"ข้อมูลสภาพอากาศออกอากาศสำหรับอากาศยานระหว่างบิน"},"VOR":{"en":"VHF Omnidirectional Radio Range","th":"เครื่องช่วยเดินอากาศบอกทิศทางย่านความถี่ VHF"},"WIP":{"en":"Work in Progress","th":"อยู่ระหว่างการปฏิบัติงานหรือก่อสร้างซ่อมแซม"},"WDI":{"en":"Wind Direction Indicator","th":"กรวยบอกทิศทางลม"}};
+;
+/* ==========================================================================
+   NOTAM core (pure functions — runs in the page and in node for tests)
+   · parse a Pre-flight Information Bulletin (SOFIA / SIA-France style, text lines with indent) or pasted ICAO-format NOTAMs
+   · group by aerodrome, merge duplicates, window status
+   · geometry (circle / polygon / points) from the E) text and the Q) line
+   · Thai draft translation from the squadron's contraction dictionary (+ a few phrases of our own; user entries win)
+   DATA HONESTY — the Thai text is a machine DRAFT built word-for-word from the dictionary: unknown words stay in English and are flagged,
+   the pilot must read it against the original NOTAM (always shown beside it) and can edit it.
+   ========================================================================== */
+const NOTAMCORE = (function () {
+  'use strict';
+  const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const p2 = n => String(n).padStart(2, '0'), p3 = n => String(n).padStart(3, '0');
+  const ict = ms => new Date(ms + 7 * 3600000);
+  const fmtTh = ms => { const t = ict(ms); return t.getUTCDate() + ' ' + MON[t.getUTCMonth()] + ' ' + String(t.getUTCFullYear() + 543).slice(2) + ' เวลา ' + p2(t.getUTCHours()) + '.' + p2(t.getUTCMinutes()) + ' น.'; };
+  const fmtTh2 = ms => { const t = ict(ms); return t.getUTCDate() + ' ' + MON[t.getUTCMonth()] + ' ' + String(t.getUTCFullYear() + 543).slice(2) + '  ' + p2(t.getUTCHours()) + p2(t.getUTCMinutes()); };
+  const fmtUtc = ms => { const t = new Date(ms); return t.getUTCFullYear() + '-' + p2(t.getUTCMonth() + 1) + '-' + p2(t.getUTCDate()) + ' ' + p2(t.getUTCHours()) + ':' + p2(t.getUTCMinutes()) + 'Z'; };
+  const flat = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+  /* ---------- lines from text ---------- */
+  const FOOT = /SOFIA-Briefing|^\s*(page\s*)?\d+\s*\/\s*\d+\s*$/i;
+  function linesOfText(txt) {                                      // pasted text: indent = number of leading spaces
+    const out = []; let gap = false;
+    String(txt || '').replace(/\r/g, '').split('\n').forEach(l => { const t = l.replace(/\t/g, '    '); if (!t.trim()) { gap = true; return; } out.push({ x: t.length - t.trimStart().length, t: t.trim(), gap }); gap = false; });
+    return out;
+  }
+  function linesOfPdfItems(pages) {                                // pages: [[{x,y,s,w}]] from pdf.js getTextContent → lines with x of the first item
+    const out = [];
+    pages.forEach(its => {
+      const rows = [];
+      its.forEach(it => { if (it.s == null || it.s === '') return; const r = rows.find(q => Math.abs(q.y - it.y) < 2.2); if (r) r.its.push(it); else rows.push({ y: it.y, its: [it] }); });
+      rows.sort((a, b) => b.y - a.y);
+      rows.forEach(r => { r.its.sort((a, b) => a.x - b.x); let s = '', px = null, pw = 0; r.its.forEach(i => { if (px != null && i.x - (px + pw) > 1.5 && !/\s$/.test(s) && !/^\s/.test(i.s)) s += ' '; s += i.s; px = i.x; pw = i.w || 0; }); const t = s.replace(/\s+/g, ' ').trim(); if (t) out.push({ x: r.its[0].x, t, gap: false }); });
+    });
+    return out;
+  }
+
+  /* ---------- Q line, times, header ---------- */
+  function latlon(latS, hemLat, lonS, hemLon) {
+    const dec = (s, dl, hem) => { const ip = s.split('.')[0], fp = s.indexOf('.') >= 0 ? '.' + s.split('.')[1] : ''; const deg = +ip.slice(0, dl), min = +ip.slice(dl, dl + 2), sec = ip.length > dl + 2 ? +(ip.slice(dl + 2) + fp) : 0; if (!(min < 60) || !(sec < 60)) return NaN; const v = deg + min / 60 + sec / 3600; return /[SW]/.test(hem) ? -v : v; };
+    const lat = dec(latS, 2, hemLat), lon = dec(lonS, 3, hemLon);
+    return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+  }
+  function parseQ(s) {
+    const raw = flat(s); const m = raw.match(/^(\w{4})\s*\/\s*(Q\w{4})\s*\/\s*(\w+)\s*\/\s*(\w+)\s*\/\s*(\w+)\s*\/\s*(\d{3}|SFC)\s*\/\s*(\d{3}|UNL)\s*\/\s*(\d{4})([NS])(\d{5})([EW])(\d{3})?/);
+    if (!m) return { raw };
+    const c = latlon(m[8], m[9], m[10], m[11]);
+    return { raw, fir: m[1], code: m[2], traf: m[3], purp: m[4], scope: m[5], lo: m[6] === 'SFC' ? 0 : +m[6], hi: m[7] === 'UNL' ? 999 : +m[7], lat: c ? c.lat : null, lon: c ? c.lon : null, rad: m[12] != null ? +m[12] : null };
+  }
+  const ymdhm = s => { const m = String(s || '').match(/(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/); return m ? Date.UTC(2000 + +m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null; };
+  function parseFromTo(t, it) {
+    const m = t.match(/FROM:\s*(\d{4})\s+(\d\d)\s+(\d\d)\s+(\d\d):(\d\d)\s+TO:\s*(?:(\d{4})\s+(\d\d)\s+(\d\d)\s+(\d\d):(\d\d)|(PERM))\s*(EST)?/i);
+    if (!m) return false;
+    it.from = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]); it.to = m[11] ? null : Date.UTC(+m[6], +m[7] - 1, +m[8], +m[9], +m[10]); it.est = !!m[12]; return true;
+  }
+  function parseHdr(txt) {
+    const h = {}; const m = txt.match(/(\d{4}-\d\d-\d\d)\s+(\d\d:\d\d)\s+(\d{4}-\d\d-\d\d)\s+(\d\d:\d\d)\s+(\d{3,4})/);
+    if (m) { h.issue = Date.parse(m[1] + 'T' + m[2] + ':00Z'); h.dep = Date.parse(m[3] + 'T' + m[4] + ':00Z'); const d = m[5].padStart(4, '0'); h.dur = +d.slice(0, 2) * 60 + +d.slice(2); h.end = h.dep + h.dur * 60000; }
+    const r = txt.match(/Flight rules[^\n]*\n\s*(\w+)\s+([A-Z]{4})\s+([A-Z]{4})/i); if (r) { h.rules = r[1]; h.from = r[2]; h.to = r[3]; }
+    const a = txt.match(/Alternates\s*\n\s*([A-Z0-9, ]+)/i); h.alts = a ? a[1].split(/[ ,]+/).filter(x => /^[A-Z]{4}$/.test(x)) : [];
+    return h;
+  }
+
+  /* ---------- parse a bulletin laid out like the SOFIA PIB ---------- */
+  const ID = /^(?:([A-Z]{4})-)?([A-Z]\d{3,5}\/\d{2})$/;
+  const LOCSKIP = /^(GNSS|COMM|NAVI|ATS|MET|AGA|SAR)\b/;
+  function parsePib(L) {
+    L = L.filter(l => !FOOT.test(l.t));
+    let hi = L.findIndex(l => /^(SELECTED AERODROMES|DEPARTURE\/DESTINATION|DEPARTURE AERODROME|DESTINATION AERODROME|ALTERNATE AERODROME|EN-?ROUTE\b)/.test(l.t) || ID.test(l.t)); if (hi < 0) hi = L.length;
+    const hdr = parseHdr(L.slice(0, hi).map(l => l.t).join('\n')), body = L.slice(hi);
+    const idx = body.filter(l => ID.test(l.t)).map(l => l.x).sort((a, b) => a - b), idX = idx.length ? idx[idx.length >> 1] : 0, headX = body.length ? Math.min(...body.map(l => l.x)) : 0;
+    const indent = idX - headX >= 2, thr = (headX + idX) / 2;
+    const items = [], locs = {}, secs = {}; let sec = '', loc = '', locName = '', cat = '', cur = null, prevGap = false;
+    body.forEach(l => {
+      const t = l.t; let m;
+      const isId = ID.test(t);
+      const cont = cur && !isId && (indent ? l.x > thr : (/^(FROM:|[A-GQ]\))/.test(t) || !l.gap));
+      if (isId) { m = t.match(ID); cur = { id: t, num: m[2], office: m[1] || '', f: {}, last: '', sec, loc, locName, cat, from: null, to: null, est: false }; items.push(cur); return; }
+      if (cont) {
+        if (/^FROM:/.test(t)) { parseFromTo(t, cur); cur.last = ''; }
+        else if ((m = t.match(/^([A-GQ])\)\s*(.*)$/))) { cur.f[m[1]] = m[2]; cur.last = m[1]; }
+        else if (cur.last) cur.f[cur.last] += '\n' + t;
+        return;
+      }
+      cur = null;
+      if (/^SELECTED AERODROMES/i.test(t)) return;
+      if (/^DEPARTURE\/DESTINATION/i.test(t) || /^DEPARTURE AERODROME/i.test(t) || /^DESTINATION AERODROME/i.test(t)) { sec = 'dep'; loc = ''; return; }
+      if (/^ALTERNATE/i.test(t)) { sec = 'alt'; loc = ''; return; }
+      if (/^EN-?ROUTE/i.test(t)) { sec = 'enr'; loc = ''; cat = ''; return; }
+      if ((m = t.match(/^([A-Z]{4})\s+(.+)$/)) && !LOCSKIP.test(t) && /[A-Z]/.test(m[2]) && m[2] === m[2].toUpperCase() && (sec !== '' )) { loc = m[1]; locName = m[2]; if (sec === 'dep' || sec === 'alt') { const parts = m[2].split(/\s*\/\s*/); locs[m[1]] = parts[parts.length - 1]; secs[m[1]] = sec; } return; }
+      cat = t;
+    });
+    return { hdr, items, locs, secs, indent };
+  }
+
+  /* ---------- parse pasted ICAO-format NOTAMs ("A1234/26 NOTAMN  Q) … A) … B) … C) … E) …") ---------- */
+  function parseRaw(txt) {
+    const s = String(txt || '').replace(/\r/g, ''), re = /\(?\s*([A-Z]\d{3,5}\/\d{2})\s+NOTAM([NRC])(?:\s+([A-Z]\d{3,5}\/\d{2}))?/g, hits = []; let m;
+    while ((m = re.exec(s))) hits.push({ i: m.index, end: re.lastIndex, id: m[1], typ: m[2], rep: m[3] || '' });
+    const items = [];
+    hits.forEach((h, k) => {
+      const body = s.slice(h.end, k + 1 < hits.length ? hits[k + 1].i : s.length).replace(/\)\s*$/, ''), parts = body.split(/(?:^|\s)([QABCDEFG])\)\s*/); const f = {};
+      for (let j = 1; j < parts.length; j += 2) f[parts[j]] = (f[parts[j]] ? f[parts[j]] + ' ' : '') + (parts[j + 1] || '').trim();
+      items.push({ id: h.id, num: h.id, office: '', f, last: '', sec: '', loc: '', locName: '', cat: '', typ: h.typ, rep: h.rep, from: ymdhm(f.B), to: /PERM/i.test(f.C || '') ? null : ymdhm(f.C), est: /EST/i.test(f.C || '') });
+    });
+    return { hdr: {}, items, locs: {}, secs: {}, indent: false, raw: true };
+  }
+
+  /* ---------- finish: fields, duplicates, grouping ---------- */
+  function groupsOf(items, hdr, names) {                            // aerodrome groups in briefing order (dep, dest, alternates, others) + en-route
+    hdr = hdr || {}; names = names || {}; const order = []; [hdr.from, hdr.to].concat(hdr.alts || []).forEach(c => { if (c && order.indexOf(c) < 0) order.push(c); });
+    items.forEach(it => { if (it.apt && order.indexOf(it.apt) < 0) order.push(it.apt); });
+    const groups = order.map(c => ({ apt: c, name: names[c] || '', role: hdr.alts && hdr.alts.indexOf(c) >= 0 && c !== hdr.from && c !== hdr.to ? 'alt' : 'dep', items: items.filter(i => i.apt === c) }));
+    const enr = items.filter(i => !i.apt); if (enr.length) groups.push({ apt: '', name: 'EN-ROUTE', role: 'enr', items: enr });
+    return groups;
+  }
+  function finish(P) {
+    const items = [], seen = {};
+    P.items.forEach(r => {
+      if (r.f.Q == null && r.f.E == null && r.f.A == null) return;
+      const it = { id: r.id, num: r.num, ids: [r.num], from: r.from, to: r.to, est: r.est, a: flat(r.f.A).split(' ')[0] || '', q: parseQ(r.f.Q || ''), d: flat(r.f.D), e: String(r.f.E || '').trim(), f: flat(r.f.F), g: flat(r.f.G), sec: r.sec, loc: r.loc, locName: r.locName, cat: r.cat, typ: r.typ || '', rep: r.rep || '' };
+      it.key = [it.a, flat(it.q.raw).replace(/ /g, ''), it.d, flat(it.e), it.from, it.to, it.f, it.g].join('|');
+      if (seen[it.key]) { seen[it.key].ids.push(it.num); return; }
+      seen[it.key] = it; items.push(it);
+    });
+    const airset = new Set([P.hdr.from, P.hdr.to].concat(P.hdr.alts || []).concat(Object.keys(P.locs)).filter(Boolean));
+    items.forEach(it => {
+      const fir = it.q.fir || '';
+      if (it.sec === 'dep' || it.sec === 'alt') it.apt = it.loc || it.a;
+      else if (airset.has(it.a)) it.apt = it.a;
+      else if (P.raw && it.a && it.a !== fir && /^[A-Z]{4}$/.test(it.a)) it.apt = it.a;
+      else it.apt = '';
+    });
+    const groups = groupsOf(items, P.hdr, P.locs);
+    return { hdr: P.hdr, items, groups, names: P.locs };
+  }
+  function parse(input) {                                           // input: text string, or {lines:[{x,t,gap}]}
+    const txt = typeof input === 'string' ? input : null, L = txt != null ? linesOfText(txt) : input.lines;
+    const raw = txt != null && /NOTAM[NRC]\b/.test(txt) && !/^[A-Z]{4}-[A-Z]\d{3,5}\/\d{2}\s*$/m.test(txt);
+    return finish(raw ? parseRaw(txt) : parsePib(L));
+  }
+
+  /* ---------- status in the flight window ---------- */
+  function status(it, win) {
+    const a = win.a, b = win.b;
+    if (it.from != null && it.from > b) return 'future';
+    if (it.to != null && it.to < a) return 'expired';
+    return 'active';
+  }
+
+  /* ---------- geometry ---------- */
+  const COORD = /(\d{4,6}(?:\.\d+)?)\s?([NS])\s?(\d{5,7}(?:\.\d+)?)\s?([EW])/g;
+  const NM = 1852;
+  function geom(it) {
+    const t = flat(it.e), co = []; let m; COORD.lastIndex = 0;
+    while ((m = COORD.exec(t))) { const c = latlon(m[1], m[2], m[3], m[4]); if (c) co.push({ lat: c.lat, lon: c.lon, raw: m[0] }); }
+    const q = it.q || {}, qc = q.lat != null ? { lat: q.lat, lon: q.lon } : null;
+    let rm = t.match(/RADIUS\s+(?:OF\s+)?([\d.]+)\s*(NM|KM|M)\b/i) || t.match(/([\d.]+)\s*(NM|KM)\s+RADIUS/i), rad = rm ? +rm[1] * (/NM/i.test(rm[2]) ? NM : /KM/i.test(rm[2]) ? 1000 : 1) : 0;
+    const hm = t.match(/HGT\s*([\d.]+)\s*FT/i), hgt = hm ? hm[1] + ' ft' : '';
+    const uniq = []; co.forEach(c => { if (!uniq.some(u => Math.abs(u.lat - c.lat) < 1e-7 && Math.abs(u.lon - c.lon) < 1e-7)) uniq.push(c); });
+    if (rad > 0 && (co[0] || qc)) return { kind: 'circle', c: co[0] || qc, r: rad, approx: !co[0], pts: [] };
+    if (uniq.length >= 3 && (/\b(WI|WITHIN|BOUNDED|AREA)\b/.test(t) || (co.length > 3 && Math.abs(co[0].lat - co[co.length - 1].lat) < 1e-7 && Math.abs(co[0].lon - co[co.length - 1].lon) < 1e-7))) return { kind: 'poly', ring: uniq, approx: false, pts: [] };
+    if (uniq.length) return { kind: 'pts', pts: uniq, hgt, approx: false };
+    if (qc && q.rad != null && q.rad <= 30 && /^Q[RW]/.test(q.code || '')) return { kind: 'circle', c: qc, r: Math.max(q.rad, 1) * NM, approx: true, pts: [] };
+    if (qc) return { kind: 'pin', c: qc, approx: true, pts: [] };
+    return { kind: 'none', pts: [], approx: true };
+  }
+  function vlim(it) {
+    const f = it.f, g = it.g, q = it.q || {};
+    if (f || g) return (f || 'GND') + ' – ' + (g || 'UNL');
+    if (q.lo != null && !(q.lo === 0 && q.hi >= 999)) return (q.lo ? 'FL' + p3(q.lo) : 'GND') + ' – ' + (q.hi >= 999 ? 'UNL' : 'FL' + p3(q.hi));
+    return '';
+  }
+
+  /* ---------- Thai draft translation ---------- */
+  const shortTh = th => (String(th).split(/\s+\/\s+/)[0].replace(/\s*\(.*$/, '').replace(/\s+เช่น.*$/, '').trim() || String(th).trim());
+  /* our own words / phrases (not in the squadron dictionary) — user entries override these, these override the dictionary */
+  const EXTRA = {
+    'AGL': 'เหนือพื้นดิน (AGL)', 'AT': 'ที่', 'AND': 'และ', 'OF': 'ของ', 'TO': 'ถึง', 'FM': 'จาก', 'FROM': 'จาก', 'BFR': 'ก่อนถึง', 'BEFORE': 'ก่อน', 'AFTER': 'หลังจาก', 'BEYOND': 'หลังจาก', 'ERECTED': 'ถูกติดตั้ง', 'DETAIL': 'รายละเอียด', 'FLW': 'ดังนี้',
+    'LEFT': 'ซ้าย', 'RIGHT': 'ขวา', 'SIDE': 'ด้าน', 'EXTD': 'ต่อขยาย', 'RCL': 'เส้นกึ่งกลางทางวิ่ง', 'CRANE': 'เครน', 'MOBILE': 'เคลื่อนที่', 'HGT': 'ความสูง', 'DIST': 'ระยะ', 'DUE': 'เนื่องจาก', 'DLA': 'ล่าช้า', 'MOV': 'การเคลื่อนที่', 'WI': 'ภายใน', 'WILL': 'จะ',
+    'TEMPO': 'ชั่วคราว', 'RESTRICTED': 'หวงห้าม', 'AREA': 'พื้นที่', 'ACT': 'เปิดใช้งาน', 'ACTIVATED': 'เปิดใช้งาน', 'TXL': 'ทางขับ (Taxi lane)', 'AWY': 'เส้นทางบิน (Airway)', 'DCT': 'ตรง', 'PROVINCE': 'จังหวัด', 'PART': 'ส่วน', 'MHZ': 'MHz', 'DAILY': 'ทุกวัน',
+    'DEP': 'ขาออก', 'ARR': 'ขาเข้า', 'AD': 'สนามบิน', 'OBST': 'สิ่งกีดขวาง', 'U/S': 'ชำรุด', 'TWR': 'หอบังคับการบิน', 'THR': 'หัวทางวิ่ง', 'AMSL': 'เหนือระดับน้ำทะเลปานกลาง (AMSL)', 'UP': 'ขึ้นไป', 'TIL': 'จนถึง', 'ON': 'บน', 'IN': 'ใน', 'BY': 'โดย', 'DUE TO': 'เนื่องจาก',
+    'TACAN': 'TACAN', 'DME': 'DME', 'VOR': 'VOR', 'NDB': 'NDB', 'ILS': 'ILS', 'PAPI': 'PAPI', 'ALS': 'ALS', 'LOC': 'LOC', 'GP': 'GP', 'RVR': 'RVR', 'TMA': 'TMA', 'FIR': 'FIR', 'DVOR': 'DVOR', 'VIP': 'VIP', 'CH': 'ช่อง', 'CODE': 'Code', 'MIN': 'นาที', 'HR': 'ชม.', 'TEST': 'ทดสอบ', 'AERIAL': 'ทางอากาศ', 'PHOTO': 'ภาพถ่าย', 'ROUTE': 'เส้นทาง', 'KNOWN': 'ที่ทราบ', 'POSITION': 'ตำแหน่ง', 'ESTABLISHED': 'ที่กำหนด', 'VACATED': 'พ้นแล้ว',
+    'PASSED': 'ผ่านแล้ว', 'UPGRADED': 'ยกระดับ', 'LATERAL': 'ด้านข้าง', 'LIMITS': 'ขอบเขต', 'AIRSPACE': 'ห้วงอากาศ', 'RELEASED': 'คืนการใช้งาน', 'MENTIONED': 'ที่ระบุ', 'ALONG': 'ตาม', 'THE': '', 'BE': '', 'HAS': '', 'HEREUNDER': 'ข้างล่างนี้', 'EITHER': 'ทั้งสอง', 'PLACE': '', 'TAKE': '',
+    'ENTERING': 'การเข้า', 'APPROVAL': 'การอนุมัติ', 'SHALL': 'ต้อง', 'MADE': '', 'EXCEPT': 'ยกเว้น', 'PILOT': 'นักบิน', 'COMMAND': 'ผู้บังคับ', 'STRICTLY': 'อย่างเคร่งครัด', 'COMPLY': 'ปฏิบัติตาม', 'WITH': '', 'INSTRUCTION': 'คำสั่ง', 'CENTRE': 'ศูนย์กลาง', 'CENTER': 'ศูนย์กลาง', 'RADIUS': 'รัศมี',
+    'ACFT': 'อากาศยาน', 'USE': 'ใช้งาน', 'NOT': 'ไม่', 'DO': '', 'ENTRY': 'การเข้า', 'ONLY': 'เท่านั้น', 'PER': 'ต่อ', 'FOR': 'สำหรับ', 'ALL': 'ทั้งหมด', 'MARKED': 'ทำเครื่องหมาย', 'TOP': 'ด้านบน', 'RED': 'สีแดง', 'GREEN': 'สีเขียว', 'WHITE': 'สีขาว',
+    'TOWER': 'หอ', 'PSN': 'ตำแหน่ง', 'POS': 'ตำแหน่ง', 'N': 'N', 'E': 'E', 'S': 'S', 'W': 'W', 'NE': 'NE', 'NW': 'NW', 'SE': 'SE', 'SW': 'SW'
+  };
+  const PHRASES = {
+    'TOWER CRANE': 'เครนหอสูง', 'MOBILE CRANE': 'เครนเคลื่อนที่', 'OBST MOBILE CRANE': 'มีเครนเคลื่อนที่ (สิ่งกีดขวาง)', 'OBST TOWER CRANE': 'มีเครนหอสูง (สิ่งกีดขวาง)', 'ON TEST, DO NOT USE': 'อยู่ระหว่างทดสอบ ห้ามใช้งาน', 'ON TEST': 'อยู่ระหว่างทดสอบ', 'DO NOT USE': 'ห้ามใช้งาน',
+    'DETAIL AS FLW:': 'รายละเอียดดังนี้', 'DETAIL AS FLW': 'รายละเอียดดังนี้', 'EXTD RCL': 'แนวต่อเส้นกึ่งกลางทางวิ่ง', 'RIGHT SIDE OF': 'ด้านขวาของ', 'LEFT SIDE OF': 'ด้านซ้ายของ', 'WILL BE': 'จะ', 'WILL TAKE PLACE': 'จะมีขึ้น', 'DUE TO': 'เนื่องจาก',
+    'AD DEP/ARR ACFT': 'อากาศยานขาออก/ขาเข้าที่สนามบิน', 'TEMPO RESTRICTED AREA': 'พื้นที่หวงห้ามชั่วคราว', 'APPROVAL SHALL BE MADE BEFORE ENTERING,': 'ต้องขออนุมัติก่อนเข้าพื้นที่,', 'APPROVAL SHALL BE MADE BEFORE ENTERING': 'ต้องขออนุมัติก่อนเข้าพื้นที่',
+    'EXCEPT DEP AND ARR ACFT AT': 'ยกเว้นอากาศยานขาออกและขาเข้าที่', 'PILOT IN COMMAND': 'ผู้บังคับอากาศยาน (PIC)', 'SHALL STRICTLY COMPLY WITH ATC INSTRUCTION': 'ต้องปฏิบัติตามคำสั่งของ ATC อย่างเคร่งครัด', 'AVBL FOR': 'ใช้ได้สำหรับ', 'UP TO': 'ไม่เกิน',
+    'FM GND UP TO': 'จากพื้นดินถึง', 'UPGRADED TO': 'ยกระดับเป็น', 'THE AIRSPACE HEREUNDER': 'ห้วงอากาศที่ระบุข้างล่างนี้', 'LATERAL LIMITS': 'ขอบเขตด้านข้าง', 'EITHER SIDE OF THE ROUTE': 'ทั้งสองข้างของเส้นทาง', 'THE MENTIONED AIRSPACE WILL BE RELEASED AS VACATED': 'ห้วงอากาศที่ระบุจะคืนให้ใช้งานเมื่อพ้นแล้ว', 'MIN AFTER VIP ACFT HAS PASSED THE KNOWN POSITION ALONG THE ESTABLISHED ROUTE:': 'นาที หลังอากาศยาน VIP ผ่านจุดที่ทราบตามเส้นทางที่กำหนดแล้ว:',
+    'HAS PASSED THE KNOWN POSITION ALONG THE ESTABLISHED ROUTE:': 'ผ่านจุดที่ทราบตามเส้นทางที่กำหนดแล้ว:', 'AERIAL PHOTO': 'การถ่ายภาพทางอากาศ', 'WI AREA': 'ภายในพื้นที่', 'MARKED RED LGT ON TOP': 'ทำเครื่องหมายและมีไฟสีแดงด้านบน', 'OPR HR': 'เวลาทำการ',
+    'PART U/S': 'บางส่วนชำรุด', 'DVOR PART U/S': 'DVOR บางส่วนชำรุด', 'ERECTED AT': 'ถูกติดตั้งที่', 'ERECTED DETAIL AS FLW:': 'ถูกติดตั้ง รายละเอียดดังนี้'
+  };
+  const UNITS = { FT: 'ฟุต', M: 'เมตร', NM: 'NM', KM: 'กม.', KT: 'นอต', MIN: 'นาที', HR: 'ชม.', MHZ: 'MHz', KHZ: 'kHz' };
+  const KEEPWORD = /^(VTBB|NOTAM|VFR|IFR|UTC|ATC|PIC|GND|FL|TACAN|VOR|DVOR|DME|NDB|ILS|GNSS|PAPI|UNL|AMSL|AGL)$/;
+  function dictTh(base, user) {                                       // base: {KEY:{en,th}}, user: {KEY:{th,v}} → {KEY:thai-short}
+    const d = {}; Object.keys(base || {}).forEach(k => { d[k] = shortTh(base[k].th); });
+    Object.keys(EXTRA).forEach(k => { d[k] = EXTRA[k]; });
+    Object.keys(PHRASES).forEach(k => { d[k] = PHRASES[k]; });
+    Object.keys(user || {}).forEach(k => { d[k.toUpperCase()] = user[k].v ? user[k].th : shortTh(user[k].th); });
+    return d;
+  }
+  function translate(text, dict) {
+    const lines = []; String(text || '').replace(/\r/g, '').split('\n').forEach(l => { const t = l.trim(); if (!t) return; if (!lines.length || /^(-|PSN\s*\d|\d+[.)]\s)/.test(t)) lines.push(t); else lines[lines.length - 1] += ' ' + t; });
+    const maxN = 14, out = [], unk = {};
+    lines.forEach(line => {
+      line = line.replace(/^-\s*(?=[A-Za-z])/, '- '); const segs = []; let last = 0, m; COORD.lastIndex = 0;
+      while ((m = COORD.exec(line))) { if (latlon(m[1], m[2], m[3], m[4])) { if (m.index > last) segs.push({ w: line.slice(last, m.index) }); segs.push({ c: m[0] }); last = m.index + m[0].length; } }
+      if (last < line.length) segs.push({ w: line.slice(last) });
+      const toks = [];
+      segs.forEach(s => {
+        if (s.c) { toks.push({ t: 'พิกัด ' + s.c, k: 1 }); return; }
+        const ws = s.w.split(/\s+/).filter(Boolean); let i = 0;
+        while (i < ws.length) {
+          let done = false;
+          for (let n = Math.min(maxN, ws.length - i); n >= 1 && !done; n--) {
+            const key = ws.slice(i, i + n).join(' ').toUpperCase();
+            if (dict[key] != null && (n > 1 || true)) { const v = dict[key]; if (v !== '') toks.push({ t: v, k: 1 }); i += n; done = true; }
+          }
+          if (done) continue;
+          const w = ws[i], core = w.replace(/^[(\[]+/, '').replace(/[,;:)\]]+$/, ''), tail = w.slice(w.replace(/[,;:)\]]+$/, '').length), head = w.slice(0, w.length - w.replace(/^[(\[]+/, '').length);
+          const um = core.match(/^(\d+(?:\.\d+)?)(FT|M|NM|KM|KT|MIN|HR|MHZ|KHZ)$/i), up = core.toUpperCase();
+          if (um) toks.push({ t: head + um[1] + ' ' + UNITS[um[2].toUpperCase()] + tail, k: 1 });
+          else if (dict[up] != null) { if (dict[up] !== '') toks.push({ t: head + dict[up] + tail, k: 1 }); }
+          else if (core.indexOf('/') > 0 && core.split('/').every(p => dict[p.toUpperCase()] != null || !/^[A-Z]{3,}$/i.test(p))) toks.push({ t: head + core.split('/').map(p => (dict[p.toUpperCase()] != null ? dict[p.toUpperCase()] : p)).join('/') + tail, k: 1 });
+          else { const isWord = /^[A-Za-z]{3,}$/.test(core) && !KEEPWORD.test(up); if (isWord) unk[up] = 1; toks.push({ t: w, k: isWord ? 0 : 1 }); }
+          i++;
+        }
+      });
+      out.push(toks);
+    });
+    return { lines: out, text: out.map(l => l.map(x => x.t).join(' ').replace(/\s+([,;:])/g, '$1').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')')).join('\n'), unknown: Object.keys(unk) };
+  }
+  const utcRange = s => String(s || '').replace(/(\d{2})(\d{2})\s*-\s*(\d{2})(\d{2})/g, (a, h1, m1, h2, m2) => { const f = (h, m) => { const t = (+h * 60 + +m + 420) % 1440; return p2(Math.floor(t / 60)) + '.' + p2(t % 60); }; return h1 + m1 + '-' + h2 + m2 + ' UTC (' + f(h1, m1) + '–' + f(h2, m2) + ' น. เวลาไทย)'; });
+  function windowTh(it) {
+    const a = it.from != null ? 'ตั้งแต่ ' + fmtTh(it.from) : '', b = it.to != null ? ' ถึง ' + fmtTh(it.to) + (it.est ? ' (ประมาณการ)' : '') : ' ไม่มีกำหนดสิ้นสุด (PERM)';
+    return (a + b).trim();
+  }
+  const Q_SUBJ = { MR: 'ทางวิ่ง', MX: 'ทางขับ', MA: 'พื้นที่เคลื่อนที่', OB: 'สิ่งกีดขวาง', FA: 'สนามบิน', NN: 'TACAN', NV: 'VOR', ND: 'DME', NB: 'NDB', NM: 'VOR/DME', RA: 'ห้วงอากาศสงวน', RT: 'พื้นที่หวงห้ามชั่วคราว', RR: 'พื้นที่หวงห้าม', RD: 'พื้นที่อันตราย', RP: 'พื้นที่ห้ามบิน', WE: 'การฝึก/ซ้อมรบ' };
+  const Q_COND = { CE: 'ติดตั้ง/ก่อสร้าง', CT: 'ทดสอบ ห้ามใช้งาน', AS: 'ชำรุด/ใช้งานไม่ได้', LT: 'จำกัดการใช้งาน', LC: 'ปิด', CA: 'เปิดใช้งาน', LW: 'จะมีขึ้น' };
+  const qTh = q => { const c = (q && q.code) || ''; if (c.length !== 5) return ''; const s = Q_SUBJ[c.slice(1, 3)], d = Q_COND[c.slice(3, 5)]; return c + (s || d ? ' — ' + (s || c.slice(1, 3)) + (d ? ' : ' + d : '') : ''); };
+
+  /* ---------- dictionary import (.md table with 3 columns, .csv, .json) ---------- */
+  function parseDictText(txt) {
+    const out = {}, s = String(txt || '').trim(); let n = 0;
+    if (/^[{[]/.test(s)) { try { const j = JSON.parse(s); Object.keys(j).forEach(k => { const v = j[k]; const th = typeof v === 'string' ? v : v && (v.th || v.TH); if (th) { out[k.toUpperCase()] = { th: String(th), v: 1 }; n++; } }); return { map: out, n }; } catch (e) { /* fall through */ } }
+    s.split(/\r?\n/).forEach(l => {
+      if (/^\s*\|/.test(l)) { const c = l.trim().replace(/^\||\|$/g, '').split('|').map(x => x.replace(/[*`]/g, '').trim()); if (c.length === 3 && !/^:?-+/.test(c[0]) && c[0] !== 'ตัวย่อ' && c[2]) c[0].split(/\s+\/\s+/).forEach(k => { if (k) { out[k.toUpperCase()] = { th: c[2], v: 0 }; n++; } }); return; }
+      const c = l.split(/[,\t]/).map(x => x.trim().replace(/^"|"$/g, '')); if (c.length >= 2 && /^[A-Za-z0-9\/-][A-Za-z0-9\/ .:-]*$/.test(c[0]) && c[1] && !/^(abbr|key|ตัวย่อ)$/i.test(c[0])) { out[c[0].toUpperCase()] = { th: c.slice(1).join(', '), v: 1 }; n++; }
+    });
+    return { map: out, n };
+  }
+
+  return { parse, groupsOf, linesOfText, linesOfPdfItems, parsePib, parseRaw, status, geom, vlim, dictTh, translate, utcRange, windowTh, qTh, parseDictText, shortTh, fmtTh, fmtTh2, fmtUtc, latlon, NM, MON, flat };
+}());
+if (typeof module !== 'undefined' && module.exports) module.exports = NOTAMCORE;
+
+;
+/* ==========================================================================
+   NOTAM (browser side): one store shared by the Briefing slides 5.2 and the "NOTAM" map layer
+   · import a PIB (PDF read in the page with pdf.js, or pasted text / .md / .txt), keep it in this browser
+   · Thai draft = dictionary (window.NOTAM_DICT from the manual + user entries)
+   · drawn map (SVG, no satellite) for a slide · Leaflet layer on the main map
+   ========================================================================== */
+const NOTAM = (function () {
+  'use strict';
+  const C = NOTAMCORE, KEY = 'au23a.notam.v1', KD = 'au23a.notam.dict.v1';
+  let ST = null, UD = {}, DC = null; const subs = [];
+  try { const j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.v === 1 && Array.isArray(j.items)) ST = j; } catch (e) { /* storage unavailable */ }
+  try { const j = JSON.parse(localStorage.getItem(KD) || 'null'); if (j && typeof j === 'object') UD = j; } catch (e) { /* ignore */ }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(ST)); } catch (e) { /* ignore */ } }, saveD = () => { try { localStorage.setItem(KD, JSON.stringify(UD)); } catch (e) { /* ignore */ } };
+  const emit = () => subs.forEach(f => { try { f(); } catch (e) { /* ignore */ } });
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const nowMs = () => (typeof window.AU_NOW === 'function' ? window.AU_NOW() : Date.now());
+
+  const dict = () => DC || (DC = C.dictTh(window.NOTAM_DICT || {}, UD));
+  const items = () => (ST ? ST.items : []);
+  const groups = () => (ST ? C.groupsOf(ST.items, ST.hdr, ST.names).map(g => Object.assign(g, { name: g.name || seedName(g.apt) })) : []);
+  const win = () => { const h = (ST && ST.hdr) || {}, a = h.dep != null ? h.dep : nowMs(); return { a, b: h.end != null ? h.end : a + 12 * 3600000 }; };
+  const status = it => C.status(it, win());
+  const SEED = () => (typeof AERO !== 'undefined' && AERO.SEED_PTS) || [];
+  const seedPt = c => SEED().find(p => p.id === c && p.kind === 'apt');
+  function seedName(c) { const p = seedPt(c); return p ? p.name.replace(/\s*\(.*\)\s*$/, '') : ''; }
+  const arp = c => { const p = seedPt(c); return p ? { lat: p.lat, lon: p.lon } : null; };
+  const auto = it => C.translate(it.e, dict());
+  const thaiOf = it => (ST && ST.th && ST.th[it.num] != null && ST.th[it.num] !== '' ? ST.th[it.num] : auto(it).text);
+  const setThai = (it, v) => { ST.th = ST.th || {}; if (v == null || v === '' || v === auto(it).text) delete ST.th[it.num]; else ST.th[it.num] = v; save(); };
+  const slideId = it => 'nt_' + String(it.num).replace(/[^A-Za-z0-9]/g, '_');
+
+  /* ---------- import ---------- */
+  function setData(R, label) {
+    ST = { v: 1, at: nowMs(), label: label || '', hdr: R.hdr, names: R.names, items: R.items, th: ST && ST.th ? ST.th : {} };
+    save(); emit(); return { items: R.items.length, groups: R.groups.length, dup: R.items.reduce((n, i) => n + i.ids.length - 1, 0), hdr: R.hdr };
+  }
+  function importText(txt, label) {
+    const R = C.parse(String(txt || ''));
+    if (!R.items.length) throw new Error('ไม่พบ NOTAM ในข้อความนี้ (ต้องมีเลขที่ NOTAM, Q) A) E) หรือเป็นรายงาน PIB แบบ SOFIA)');
+    return setData(R, label);
+  }
+  async function readPdf(buf) {
+    const lib = window.pdfjsLib; if (!lib) throw new Error('หน้านี้ไม่มีตัวอ่าน PDF — วางข้อความที่คัดลอกจาก PDF แทน');
+    try { if (!lib.GlobalWorkerOptions.workerSrc && window.PDFJS_WORKER) lib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([window.PDFJS_WORKER], { type: 'text/javascript' })); } catch (e) { /* use the fake worker */ }
+    const doc = await lib.getDocument({ data: buf }).promise, pages = [];
+    for (let p = 1; p <= doc.numPages; p++) { const tc = await (await doc.getPage(p)).getTextContent(); pages.push(tc.items.map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width }))); }
+    return C.linesOfPdfItems(pages);
+  }
+  async function importFile(file) {
+    const nm = file.name || '';
+    if (/\.pdf$/i.test(nm) || file.type === 'application/pdf') {
+      const lines = await readPdf(new Uint8Array(await file.arrayBuffer()));
+      if (!lines.length) throw new Error('PDF นี้ไม่มีข้อความให้อ่าน (เป็นภาพสแกน?) — ต้องเป็น PDF ที่เลือกข้อความได้');
+      const R = C.parse({ lines }); if (!R.items.length) throw new Error('อ่าน PDF ได้ แต่ไม่พบรายการ NOTAM ในรูปแบบที่รองรับ');
+      return setData(R, nm);
+    }
+    return importText(await file.text(), nm);
+  }
+  function clear() { ST = null; save(); try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } emit(); }
+  function importDict(txt) { const r = C.parseDictText(txt); if (!r.n) throw new Error('ไม่พบคำย่อในไฟล์ (ต้องเป็นตาราง 3 คอลัมน์ ตัวย่อ | คำเต็ม | คำแปล หรือ CSV / JSON)'); Object.assign(UD, r.map); DC = null; saveD(); emit(); return r.n; }
+  const addWord = (w, th) => { w = String(w || '').trim().toUpperCase(); th = String(th || '').trim(); if (!w || !th) return false; UD[w] = { th, v: 1 }; DC = null; saveD(); emit(); return true; };
+  const setName = (apt, v) => { if (!ST) return; ST.names = ST.names || {}; if (v && v.trim()) ST.names[apt] = v.trim(); else delete ST.names[apt]; save(); };
+  const clearDict = () => { UD = {}; DC = null; saveD(); emit(); };
+  const dictInfo = () => ({ base: Object.keys(window.NOTAM_DICT || {}).length, user: Object.keys(UD).length });
+
+  /* ---------- drawn map (SVG) ---------- */
+  const R_E = 6371000, rad = d => d * Math.PI / 180;
+  const distM = (a, b) => { const dl = rad(b.lat - a.lat), dn = rad(b.lon - a.lon), x = Math.sin(dl / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dn / 2) ** 2; return 2 * R_E * Math.asin(Math.sqrt(x)); };
+  const brg = (a, b) => { const y = Math.sin(rad(b.lon - a.lon)) * Math.cos(rad(b.lat)), x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lon - a.lon)); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; };
+  let TH = null;
+  const thaGeo = () => {                                              // decode the embedded Natural Earth data once
+    if (TH) return TH; const T = window.THA_MAP; TH = { land: [], prov: [], riv: [], road: [], pl: [] }; if (!T) return TH;
+    const dec = a => { const o = []; let x = 0, y = 0; for (let i = 0; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; o.push([y / 1000, x / 1000]); } return o; };
+    const bb = r => { let a = 90, b = -90, c = 180, d = -180; r.forEach(p => { if (p[0] < a) a = p[0]; if (p[0] > b) b = p[0]; if (p[1] < c) c = p[1]; if (p[1] > d) d = p[1]; }); return [a, b, c, d]; };
+    const add = (k, arr, closed) => arr.forEach(a => { const r = dec(a); TH[k].push({ r, b: bb(r), closed }); });
+    T.land.forEach(c => add('land', c.r, 1)); T.prov.forEach(p => add('prov', p.r, 1)); T.riv.forEach(v => add('riv', v.l, 0)); T.road.forEach(v => { if (v.t === 1) add('road', v.l, 0); }); TH.pl = T.pl || [];
+    return TH;
+  };
+  const NICE = [0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5];
+  function mapSvg(it, o) {
+    o = o || {}; const W = o.w || 600, H = o.h || 500, pad = 34, g = C.geom(it), A = arp(it.apt);
+    /* what must be in view */
+    const P = []; let minHalf = g.approx ? 1852 : g.kind === 'pts' && !it.apt ? 9260 : 250;
+    if (g.kind === 'circle') { const dLat = g.r / 110574, dLon = g.r / (111320 * Math.cos(rad(g.c.lat))); P.push([g.c.lat - dLat, g.c.lon - dLon], [g.c.lat + dLat, g.c.lon + dLon]); }
+    else if (g.kind === 'poly') g.ring.forEach(p => P.push([p.lat, p.lon]));
+    else if (g.kind === 'pts') g.pts.forEach(p => P.push([p.lat, p.lon]));
+    else if (g.kind === 'pin') P.push([g.c.lat, g.c.lon]);
+    if (g.approx && A) P.push([A.lat, A.lon]);
+    if (!P.length && A) P.push([A.lat, A.lon]);
+    if (!P.length) return null;
+    let la0 = Math.min(...P.map(p => p[0])), la1 = Math.max(...P.map(p => p[0])), lo0 = Math.min(...P.map(p => p[1])), lo1 = Math.max(...P.map(p => p[1]));
+    const lat0 = (la0 + la1) / 2, lon0 = (lo0 + lo1) / 2, kx = 111320 * Math.cos(rad(lat0)), ky = 110574;
+    let sx = (lo1 - lo0) * kx * 1.3, sy = (la1 - la0) * ky * 1.3; sx = Math.max(sx, 2 * minHalf); sy = Math.max(sy, 2 * minHalf);
+    const sc = Math.min((W - 2 * pad) / sx, (H - 2 * pad) / sy), X = lon => W / 2 + (lon - lon0) * kx * sc, Y = lat => H / 2 - (lat - lat0) * ky * sc;
+    const inv = (px, py) => ({ lat: lat0 - (py - H / 2) / (ky * sc), lon: lon0 + (px - W / 2) / (kx * sc) });
+    const tl = inv(0, 0), br = inv(W, H), vb = [br.lat, tl.lat, tl.lon, br.lon], spanM = Math.max(W / sc, H / sc), mPerPx = 1 / sc;
+    let s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" class="nt-map" role="img" aria-label="แผนที่วาดจากพิกัด ' + esc(it.num) + '"><defs><clipPath id="ntc"><rect width="' + W + '" height="' + H + '"/></clipPath></defs><rect width="' + W + '" height="' + H + '" fill="#f4f1ea"/><g clip-path="url(#ntc)">';
+    /* background: land / sea, provinces, rivers, roads, towns (only where the 1:10 m data is meaningful) */
+    if (spanM > 9000 && window.THA_MAP) {
+      const T = thaGeo(), hit = b => !(b[1] < vb[0] || b[0] > vb[1] || b[3] < vb[2] || b[2] > vb[3]), path = (r, closed) => 'M' + r.map(p => X(p[1]).toFixed(1) + ' ' + Y(p[0]).toFixed(1)).join('L') + (closed ? 'Z' : '');
+      s += '<rect width="' + W + '" height="' + H + '" fill="#c7dcec"/>';
+      T.land.forEach(q => { if (hit(q.b)) s += '<path d="' + path(q.r, 1) + '" fill="#f1eee4" stroke="#9db4c4" stroke-width="1"/>'; });
+      T.prov.forEach(q => { if (hit(q.b)) s += '<path d="' + path(q.r, 1) + '" fill="none" stroke="#b9a99a" stroke-width="0.8" stroke-dasharray="5 3"/>'; });
+      T.riv.forEach(q => { if (hit(q.b)) s += '<path d="' + path(q.r, 0) + '" fill="none" stroke="#8fb8d8" stroke-width="1.2"/>'; });
+      if (spanM < 160000) T.road.forEach(q => { if (hit(q.b)) s += '<path d="' + path(q.r, 0) + '" fill="none" stroke="#d2a35c" stroke-width="1.4"/>'; });
+      let nt = 0; T.pl.forEach(p => { const la = p[2], lo = p[1]; if (nt < 10 && la > vb[0] && la < vb[1] && lo > vb[2] && lo < vb[3]) { nt++; s += '<circle cx="' + X(lo).toFixed(1) + '" cy="' + Y(la).toFixed(1) + '" r="3" fill="#6b7886"/><text x="' + (X(lo) + 6).toFixed(1) + '" y="' + (Y(la) + 4).toFixed(1) + '" font-size="13" fill="#4a5b6c">' + esc(p[0]) + '</text>'; } });
+    }
+    /* graticule */
+    const stepOf = span => NICE.find(n => span / n <= 6) || 5, dstep = stepOf(Math.max(vb[1] - vb[0], vb[3] - vb[2])), dig = dstep < 0.001 ? 4 : dstep < 0.01 ? 3 : dstep < 0.1 ? 2 : 1;
+    for (let la = Math.ceil(vb[0] / dstep) * dstep; la <= vb[1]; la += dstep) s += '<line x1="0" x2="' + W + '" y1="' + Y(la).toFixed(1) + '" y2="' + Y(la).toFixed(1) + '" stroke="#5b7a96" stroke-opacity=".28" stroke-dasharray="3 4"/><text x="4" y="' + (Y(la) - 3).toFixed(1) + '" font-size="12" fill="#4a5b6c">' + la.toFixed(dig) + '°N</text>';
+    for (let lo = Math.ceil(vb[2] / dstep) * dstep; lo <= vb[3]; lo += dstep) s += '<line y1="0" y2="' + H + '" x1="' + X(lo).toFixed(1) + '" x2="' + X(lo).toFixed(1) + '" stroke="#5b7a96" stroke-opacity=".28" stroke-dasharray="3 4"/><text y="' + (H - 6) + '" x="' + (X(lo) + 3).toFixed(1) + '" font-size="12" fill="#4a5b6c">' + lo.toFixed(dig) + '°E</text>';
+    /* the NOTAM itself */
+    const RED = '#e11d1d', FILL = 'rgba(225,29,29,0.22)', dash = g.approx ? ' stroke-dasharray="9 6"' : '';
+    if (g.kind === 'circle') s += '<circle cx="' + X(g.c.lon).toFixed(1) + '" cy="' + Y(g.c.lat).toFixed(1) + '" r="' + (g.r * sc).toFixed(1) + '" fill="' + FILL + '" stroke="' + RED + '" stroke-width="3"' + dash + '/><circle cx="' + X(g.c.lon).toFixed(1) + '" cy="' + Y(g.c.lat).toFixed(1) + '" r="4" fill="' + RED + '"/>';
+    if (g.kind === 'poly') s += '<path d="M' + g.ring.map(p => X(p.lon).toFixed(1) + ' ' + Y(p.lat).toFixed(1)).join('L') + 'Z" fill="' + FILL + '" stroke="' + RED + '" stroke-width="3"/>';
+    const marks = g.kind === 'pts' ? g.pts : g.kind === 'pin' ? [g.c] : [];
+    marks.forEach((p, i) => { const x = X(p.lon).toFixed(1), y = Y(p.lat).toFixed(1); s += '<g><circle cx="' + x + '" cy="' + y + '" r="11" fill="' + RED + '" stroke="#fff" stroke-width="2.5"/>' + (marks.length > 1 ? '<text x="' + x + '" y="' + (+y + 5) + '" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">' + (i + 1) + '</text>' : '<circle cx="' + x + '" cy="' + y + '" r="4" fill="#fff"/>') + '</g>'; });
+    if (g.kind === 'pts' && g.hgt) { const p = g.pts[0]; s += '<text x="' + (X(p.lon) + 16).toFixed(1) + '" y="' + (Y(p.lat) - 12).toFixed(1) + '" font-size="17" font-weight="700" fill="' + RED + '" stroke="#fff" stroke-width="3" paint-order="stroke">สูง ' + esc(g.hgt) + '</text>'; }
+    if (g.approx && g.kind !== 'none') s += '<text x="' + (W / 2) + '" y="' + (pad - 10) + '" text-anchor="middle" font-size="14" fill="' + RED + '" stroke="#fff" stroke-width="3" paint-order="stroke">ตำแหน่งโดยประมาณ จากพิกัดศูนย์กลาง Q) (ไม่มีพิกัดในข้อความ)</text>';
+    /* aerodrome reference point */
+    if (A) {
+      const ax = X(A.lon), ay = Y(A.lat);
+      if (ax > 14 && ax < W - 14 && ay > 14 && ay < H - 14) s += '<g><circle cx="' + ax.toFixed(1) + '" cy="' + ay.toFixed(1) + '" r="8" fill="#1d4ed8" stroke="#fff" stroke-width="2.5"/><text x="' + (ax + 13).toFixed(1) + '" y="' + (ay + 5).toFixed(1) + '" font-size="15" font-weight="700" fill="#1d4ed8" stroke="#fff" stroke-width="3" paint-order="stroke">' + esc(it.apt) + ' ARP</text></g>';
+      else { const c = g.kind === 'circle' || g.kind === 'pin' ? g.c : P.length ? { lat: lat0, lon: lon0 } : A, b = brg(c, A), d = distM(c, A), ang = rad(b - 90), ex = W / 2 + Math.cos(ang) * (W / 2 - 52), ey = H / 2 + Math.sin(ang) * (H / 2 - 52); s += '<g transform="translate(' + ex.toFixed(1) + ' ' + ey.toFixed(1) + ') rotate(' + (b - 90 + 90).toFixed(0) + ')"><path d="M0 -14 L10 8 L0 3 L-10 8Z" fill="#1d4ed8" stroke="#fff" stroke-width="2"/></g><text x="' + Math.max(8, Math.min(W - 8, ex)).toFixed(1) + '" y="' + (ey + (ey > H / 2 ? -22 : 30)).toFixed(1) + '" text-anchor="' + (ex > W / 2 ? 'end' : 'start') + '" font-size="14" font-weight="700" fill="#1d4ed8" stroke="#fff" stroke-width="3" paint-order="stroke">' + esc(it.apt) + ' ARP ห่าง ' + (d >= 1852 ? (d / 1852).toFixed(1) + ' NM' : Math.round(d) + ' m') + ' ทิศ ' + String(Math.round(b)).padStart(3, '0') + '°</text>'; }
+    }
+    /* scale bar + north */
+    const bars = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000], target = (W - 2 * pad) * mPerPx * 0.28, bm = bars.filter(b => b <= target).pop() || bars[0], bw = bm * sc, lab = bm >= 1000 ? bm / 1000 + ' km' : bm + ' m';
+    s += '<g transform="translate(' + (W - pad - bw).toFixed(1) + ' ' + (H - 30) + ')"><rect x="-6" y="-16" width="' + (bw + 12).toFixed(1) + '" height="30" fill="#fff" fill-opacity=".8"/><path d="M0 0v8h' + bw.toFixed(1) + 'v-8" fill="none" stroke="#223" stroke-width="2"/><text x="' + (bw / 2).toFixed(1) + '" y="-4" text-anchor="middle" font-size="14" fill="#223">' + lab + '</text></g>';
+    s += '<g transform="translate(' + (W - 28) + ' 44)"><path d="M0 -22 L9 6 L0 0 L-9 6Z" fill="#223"/><text y="22" text-anchor="middle" font-size="14" font-weight="700" fill="#223">N</text></g>';
+    s += '</g><rect x="0.5" y="0.5" width="' + (W - 1) + '" height="' + (H - 1) + '" fill="none" stroke="#223" stroke-width="1.5"/></svg>';
+    const d = document.createElement('div'); d.innerHTML = s; return d.firstChild;
+  }
+
+  /* ---------- map layer ---------- */
+  const COL = { active: '#e11d1d', future: '#f59e0b', expired: '#8892a0' };
+  const STH = { active: 'มีผลในช่วงเวลาบิน', future: 'ยังไม่เริ่ม (หลังช่วงเวลาบิน)', expired: 'หมดอายุก่อนช่วงเวลาบิน' };
+  let layer = null;
+  function popupHtml(it) {
+    const st = status(it), g = C.geom(it), vl = C.vlim(it);
+    return '<div class="nt-pop"><b>' + esc(it.num) + '</b> · ' + esc(it.apt || it.a || 'EN-ROUTE') + ' <span style="color:' + COL[st] + '">● ' + STH[st] + '</span><br>' + esc(C.windowTh(it)) + (vl ? '<br>ความสูง: ' + esc(vl) : '') + (g.approx ? '<br><i>ตำแหน่งโดยประมาณ (Q-line)</i>' : '') + '<div class="nt-th">' + esc(thaiOf(it)).replace(/\n/g, '<br>') + '</div><details><summary>NOTAM ต้นฉบับ</summary><pre>' + esc((it.ids.length > 1 ? it.ids.join(' = ') + '\n' : it.num + '\n') + (it.q.raw ? 'Q) ' + it.q.raw + '\n' : '') + (it.d ? 'D) ' + it.d + '\n' : '') + 'E) ' + it.e) + '</pre></details></div>';
+  }
+  function draw() {
+    if (!layer) return; layer.clearLayers();
+    items().forEach(it => {
+      const g = C.geom(it), st = status(it), col = COL[st], o = { color: col, weight: 2.5, fillColor: col, fillOpacity: 0.2, dashArray: g.approx ? '6 5' : null }; let center = null, sh = null;
+      if (g.kind === 'circle') { sh = L.circle([g.c.lat, g.c.lon], Object.assign({ radius: g.r }, o)); center = [g.c.lat, g.c.lon]; }
+      else if (g.kind === 'poly') { sh = L.polygon(g.ring.map(p => [p.lat, p.lon]), o); center = sh.getBounds().getCenter(); }
+      else if (g.kind === 'pts') { sh = L.layerGroup(g.pts.map(p => L.circleMarker([p.lat, p.lon], { radius: 7, color: '#fff', weight: 2, fillColor: col, fillOpacity: 1 }))); center = [g.pts[0].lat, g.pts[0].lon]; }
+      else if (g.kind === 'pin') { sh = L.circleMarker([g.c.lat, g.c.lon], { radius: 8, color: '#fff', weight: 2, fillColor: col, fillOpacity: 0.9, dashArray: '3 3' }); center = [g.c.lat, g.c.lon]; }
+      if (!sh) return;
+      const grp = L.featureGroup([sh]); grp.bindPopup(popupHtml(it), { maxWidth: 360 }); grp.bindTooltip(it.num + (it.apt ? ' · ' + it.apt : ''), { sticky: true });
+      layer.addLayer(grp);
+      if (center) layer.addLayer(L.marker(center, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'nt-lab', html: '<span style="background:' + col + '">' + esc(it.num.replace(/\/\d+$/, '')) + '</span>', iconSize: [60, 16], iconAnchor: [30, -6] }) }));
+    });
+  }
+  function zoomAll() {
+    const pts = []; items().forEach(it => { const g = C.geom(it); if (g.kind === 'circle' || g.kind === 'pin') pts.push([g.c.lat, g.c.lon]); (g.ring || []).concat(g.pts || []).forEach(p => pts.push([p.lat, p.lon])); });
+    if (pts.length && typeof map !== 'undefined') map.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 13 });
+  }
+  function initMap() {
+    if (typeof L === 'undefined' || typeof AERO === 'undefined' || typeof map === 'undefined') return;
+    layer = L.layerGroup(); AERO.register('notam', '🔔 NOTAM (นำเข้าจาก PIB)', layer, 1); draw(); subs.push(draw);
+    const body = document.querySelector('.aero-body'); if (!body) return;
+    const lab = h('div', { class: 'aero-note', 'data-notam': 'label' }), fi = h('input', { type: 'file', accept: '.pdf,.txt,.md,text/plain,application/pdf', hidden: '', 'data-notam': 'file' });
+    const upd = () => { lab.textContent = ST ? 'NOTAM ' + ST.items.length + ' รายการ · ' + (ST.label || 'ข้อความที่วาง') + ' · ' + C.fmtTh(ST.at) : 'NOTAM: ยังไม่ได้นำเข้า (ไฟล์ PIB แบบ PDF หรือข้อความ)'; };
+    fi.onchange = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; try { const r = await importFile(f); toastM('นำเข้า NOTAM ' + r.items + ' รายการ' + (r.dup ? ' (รวมซ้ำ ' + r.dup + ')' : '')); if (!map.hasLayer(layer)) layer.addTo(map); zoomAll(); } catch (e) { toastM('นำเข้า NOTAM ไม่ได้: ' + (e && e.message || e), 1); } };
+    body.append(h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn sm', onclick: () => fi.click() }, '⇪ Import NOTAM (PDF / text)'), h('button', { type: 'button', class: 'btn sm ghost', onclick: zoomAll }, 'ซูมไปที่ NOTAM'), h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { clear(); } }, 'ล้าง')), fi, lab);
+    subs.push(upd); upd();
+  }
+  const toastM = (m, err) => { if (typeof toast === 'function') toast(m, err ? 'err' : ''); };
+  setTimeout(initMap, 0);
+
+  return { state: () => ST, items, groups, status, win, thaiOf, setThai, auto, slideId, importText, importFile, clear, importDict, clearDict, dictInfo, addWord, setName, mapSvg, onChange: f => subs.push(f), seedName, arp, geom: C.geom, vlim: C.vlim, core: C, esc, STH, COL, popupHtml, zoomAll, draw, save };
 }());
 
 ;
