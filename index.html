@@ -30352,7 +30352,7 @@ const BRIEF_SLIDES = function (C) {
     const left = E('brs-col', 'div', [raw, E('brs-ntth', 'div', thl), it.d ? E('brs-ntl dim', 'div', 'ช่วงเวลา: ' + cl.utcRange(it.d).replace(/^DAILY/i, 'ทุกวัน')) : null, vl ? E('brs-ntl', 'div', 'ความสูง ' + vl) : null,
       E('brs-ntwin' + (stt === 'active' ? '' : ' warn'), 'div', cl.windowTh(it) + (stt === 'active' ? '' : '  ·  ' + N.STH[stt]))]);
     const svg = N.mapSvg(it, { w: 560, h: pp ? 300 : 470 });
-    const right = E('brs-ntr', 'div', [svg || E('brs-empty', 'div', 'ไม่มีพิกัดให้วาดแผนที่'), E('brs-ntfn', 'div', 'ภาพวาดจากพิกัด — ไม่ใช่ภาพดาวเทียม'), pp ? E('brs-ntp', 'div', pp) : null]);
+    const right = E('brs-ntr', 'div', [svg || E('brs-empty', 'div', 'ไม่มีพิกัดให้วาดแผนที่'), E('brs-ntfn', 'div', N.sat() ? 'ภาพดาวเทียม Esri (ต้องต่อเน็ต) + ตำแหน่งวาดจากพิกัด — ถ้าภาพไม่ขึ้นจะเป็นแผนที่วาดเปล่า' : 'ภาพวาดจากพิกัด — ไม่ใช่ภาพดาวเทียม'), pp ? E('brs-ntp', 'div', pp) : null]);
     body.append(left, right); st.append(head('', g.apt || ('EN-ROUTE' + (it.locName ? ' · ' + it.locName : ''))), body);
   }
   function edNtCover(p, rd) {
@@ -30371,6 +30371,8 @@ const BRIEF_SLIDES = function (C) {
         E('brs-fine', 'p', gs.map(g => (g.apt || 'EN-ROUTE') + ' ' + g.items.length).join('  ·  ')),
         E('brs-btns', 'div', [h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { N.items().forEach(i => { if (N.status(i) === 'active') delete S.off[N.slideId(i)]; else S.off[N.slideId(i)] = 1; }); save(); rd(true); } }, 'เลือกเฉพาะ NOTAM ที่มีผลในช่วงเวลาบิน'), h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { N.items().forEach(i => { delete S.off[N.slideId(i)]; }); save(); rd(true); } }, 'เลือก NOTAM ทั้งหมด')]));
     }
+    const sc = h('input', { type: 'checkbox', 'data-nt': 'sat', onchange: ev => { N.setSat(ev.target.checked); } }); sc.checked = N.sat();
+    p.append(E('brs-fine', 'label', [sc, ' พื้นหลังภาพดาวเทียม Esri/Maxar ในแผนที่ NOTAM (ต้องต่อเน็ตตอนเปิด/พิมพ์สไลด์ · ปิดแล้วเป็นแผนที่วาดเปล่า)']));
     const di = N.dictInfo(), fd = h('input', { type: 'file', accept: '.md,.txt,.csv,.json,text/*,application/json', hidden: true, 'data-nt': 'dictfile', onchange: async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; try { const n = N.importDict(await f.text()); say('เพิ่มพจนานุกรม ' + n + ' คำจาก ' + f.name); rd(true); } catch (e) { say('นำเข้าพจนานุกรมไม่ได้: ' + (e && e.message || e)); } } });
     p.append(E('brs-fine', 'p', 'พจนานุกรมแปลไทย: ตั้งต้น ' + di.base + ' คำ (จากคู่มือ NOTAM) + ของฉัน ' + di.user + ' คำ · นำเข้าไฟล์ตาราง .md (ตัวย่อ | คำเต็ม | คำแปล), .csv (ตัวย่อ,คำแปล) หรือ .json ได้ คำของฉันจะทับคำตั้งต้น · คำแปลเป็น “ร่าง” จากการแทนคำ ต้องตรวจเทียบกับ NOTAM ต้นฉบับก่อนใช้บรีฟ'),
       E('brs-btns', 'div', [h('button', { type: 'button', class: 'btn sm', 'data-nt': 'dict', onclick: () => fd.click() }, '⇪ นำเข้าพจนานุกรม'), fd, di.user ? h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { if (confirm('ล้างคำที่เพิ่มเอง ' + di.user + ' คำ?')) { N.clearDict(); rd(true); } } }, 'ล้างพจนานุกรมของฉัน') : null]));
@@ -31970,10 +31972,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = NOTAMCORE;
    ========================================================================== */
 const NOTAM = (function () {
   'use strict';
-  const C = NOTAMCORE, KEY = 'au23a.notam.v1', KD = 'au23a.notam.dict.v1';
+  const C = NOTAMCORE, KEY = 'au23a.notam.v1', KD = 'au23a.notam.dict.v1', KS = 'au23a.notam.sat.v1';
   let ST = null, UD = {}, DC = null; const subs = [];
   try { const j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.v === 1 && Array.isArray(j.items)) ST = j; } catch (e) { /* storage unavailable */ }
   try { const j = JSON.parse(localStorage.getItem(KD) || 'null'); if (j && typeof j === 'object') UD = j; } catch (e) { /* ignore */ }
+  let SAT = true; try { SAT = localStorage.getItem(KS) !== '0'; } catch (e) { /* default on */ }
+  const sat = () => SAT, setSat = v => { SAT = !!v; try { localStorage.setItem(KS, SAT ? '1' : '0'); } catch (e) { /* ignore */ } emit(); };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(ST)); } catch (e) { /* ignore */ } }, saveD = () => { try { localStorage.setItem(KD, JSON.stringify(UD)); } catch (e) { /* ignore */ } };
   const emit = () => subs.forEach(f => { try { f(); } catch (e) { /* ignore */ } });
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -32069,10 +32073,27 @@ const NOTAM = (function () {
       if (spanM < 160000) T.road.forEach(q => { if (hit(q.b)) s += '<path d="' + path(q.r, 0) + '" fill="none" stroke="#d2a35c" stroke-width="1.4"/>'; });
       let nt = 0; T.pl.forEach(p => { const la = p[2], lo = p[1]; if (nt < 10 && la > vb[0] && la < vb[1] && lo > vb[2] && lo < vb[3]) { nt++; s += '<circle cx="' + X(lo).toFixed(1) + '" cy="' + Y(la).toFixed(1) + '" r="3" fill="#6b7886"/><text x="' + (X(lo) + 6).toFixed(1) + '" y="' + (Y(la) + 4).toFixed(1) + '" font-size="13" fill="#4a5b6c">' + esc(p[0]) + '</text>'; } });
     }
+
+    /* satellite imagery (Esri World Imagery, same source as the main map) — placed tile by tile on the same projection; missing tiles simply stay blank */
+    let satN = 0;
+    if (SAT && o.sat !== false) {
+      const cl = Math.cos(rad(lat0)); let z = Math.ceil(Math.log2(156543.03 * cl / mPerPx)); z = Math.max(3, Math.min(18, z));
+      const tx = (lo, zz) => (lo + 180) / 360 * 2 ** zz, ty = (la, zz) => (1 - Math.log(Math.tan(rad(la)) + 1 / Math.cos(rad(la))) / Math.PI) / 2 * 2 ** zz;
+      const rng = zz => { const a = Math.floor(tx(vb[2], zz)), b = Math.floor(tx(vb[3], zz)), c = Math.floor(ty(vb[1], zz)), d = Math.floor(ty(vb[0], zz)); return [a, b, c, d]; };
+      let r = rng(z); while (z > 3 && (r[1] - r[0] + 1) * (r[3] - r[2] + 1) > 30) { z--; r = rng(z); }
+      const lon_ = (x, zz) => x / 2 ** zz * 360 - 180, lat_ = (y, zz) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 2 ** zz))) * 180 / Math.PI;
+      s += '<g class="nt-sat">';
+      for (let x = r[0]; x <= r[1]; x++) for (let y = r[2]; y <= r[3]; y++) {
+        const x0 = X(lon_(x, z)), x1 = X(lon_(x + 1, z)), y0 = Y(lat_(y, z)), y1 = Y(lat_(y + 1, z));
+        s += '<image href="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + y + '/' + x + '" x="' + x0.toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + (x1 - x0 + 0.6).toFixed(1) + '" height="' + (y1 - y0 + 0.6).toFixed(1) + '" preserveAspectRatio="none" onerror="this.remove()"/>'; satN++;
+      }
+      s += '</g>';
+    }
+    const LBL = satN ? '#ffffff' : '#4a5b6c', LST = satN ? ' stroke="#0b1420" stroke-width="3" paint-order="stroke"' : '', GL = satN ? '#ffffff' : '#5b7a96', GO = satN ? '.45' : '.28';
     /* graticule */
     const stepOf = span => NICE.find(n => span / n <= 6) || 5, dstep = stepOf(Math.max(vb[1] - vb[0], vb[3] - vb[2])), dig = dstep < 0.001 ? 4 : dstep < 0.01 ? 3 : dstep < 0.1 ? 2 : 1;
-    for (let la = Math.ceil(vb[0] / dstep) * dstep; la <= vb[1]; la += dstep) s += '<line x1="0" x2="' + W + '" y1="' + Y(la).toFixed(1) + '" y2="' + Y(la).toFixed(1) + '" stroke="#5b7a96" stroke-opacity=".28" stroke-dasharray="3 4"/><text x="4" y="' + (Y(la) - 3).toFixed(1) + '" font-size="12" fill="#4a5b6c">' + la.toFixed(dig) + '°N</text>';
-    for (let lo = Math.ceil(vb[2] / dstep) * dstep; lo <= vb[3]; lo += dstep) s += '<line y1="0" y2="' + H + '" x1="' + X(lo).toFixed(1) + '" x2="' + X(lo).toFixed(1) + '" stroke="#5b7a96" stroke-opacity=".28" stroke-dasharray="3 4"/><text y="' + (H - 6) + '" x="' + (X(lo) + 3).toFixed(1) + '" font-size="12" fill="#4a5b6c">' + lo.toFixed(dig) + '°E</text>';
+    for (let la = Math.ceil(vb[0] / dstep) * dstep; la <= vb[1]; la += dstep) s += '<line x1="0" x2="' + W + '" y1="' + Y(la).toFixed(1) + '" y2="' + Y(la).toFixed(1) + '" stroke="' + GL + '" stroke-opacity="' + GO + '" stroke-dasharray="3 4"/><text x="4" y="' + (Y(la) - 3).toFixed(1) + '" font-size="12" fill="' + LBL + '"' + LST + '>' + la.toFixed(dig) + '°N</text>';
+    for (let lo = Math.ceil(vb[2] / dstep) * dstep; lo <= vb[3]; lo += dstep) s += '<line y1="0" y2="' + H + '" x1="' + X(lo).toFixed(1) + '" x2="' + X(lo).toFixed(1) + '" stroke="' + GL + '" stroke-opacity="' + GO + '" stroke-dasharray="3 4"/><text y="' + (H - 6) + '" x="' + (X(lo) + 3).toFixed(1) + '" font-size="12" fill="' + LBL + '"' + LST + '>' + lo.toFixed(dig) + '°E</text>';
     /* the NOTAM itself */
     const RED = '#e11d1d', FILL = 'rgba(225,29,29,0.22)', dash = g.approx ? ' stroke-dasharray="9 6"' : '';
     if (g.kind === 'circle') s += '<circle cx="' + X(g.c.lon).toFixed(1) + '" cy="' + Y(g.c.lat).toFixed(1) + '" r="' + (g.r * sc).toFixed(1) + '" fill="' + FILL + '" stroke="' + RED + '" stroke-width="3"' + dash + '/><circle cx="' + X(g.c.lon).toFixed(1) + '" cy="' + Y(g.c.lat).toFixed(1) + '" r="4" fill="' + RED + '"/>';
@@ -32091,6 +32112,7 @@ const NOTAM = (function () {
     const bars = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000], target = (W - 2 * pad) * mPerPx * 0.28, bm = bars.filter(b => b <= target).pop() || bars[0], bw = bm * sc, lab = bm >= 1000 ? bm / 1000 + ' km' : bm + ' m';
     s += '<g transform="translate(' + (W - pad - bw).toFixed(1) + ' ' + (H - 30) + ')"><rect x="-6" y="-16" width="' + (bw + 12).toFixed(1) + '" height="30" fill="#fff" fill-opacity=".8"/><path d="M0 0v8h' + bw.toFixed(1) + 'v-8" fill="none" stroke="#223" stroke-width="2"/><text x="' + (bw / 2).toFixed(1) + '" y="-4" text-anchor="middle" font-size="14" fill="#223">' + lab + '</text></g>';
     s += '<g transform="translate(' + (W - 28) + ' 44)"><path d="M0 -22 L9 6 L0 0 L-9 6Z" fill="#223"/><text y="22" text-anchor="middle" font-size="14" font-weight="700" fill="#223">N</text></g>';
+    if (satN) s += '<text x="6" y="' + (H - 22) + '" font-size="11" fill="#fff" stroke="#0b1420" stroke-width="2.5" paint-order="stroke">Imagery © Esri, Maxar, Earthstar Geographics</text>';
     s += '</g><rect x="0.5" y="0.5" width="' + (W - 1) + '" height="' + (H - 1) + '" fill="none" stroke="#223" stroke-width="1.5"/></svg>';
     const d = document.createElement('div'); d.innerHTML = s; return d.firstChild;
   }
@@ -32134,7 +32156,7 @@ const NOTAM = (function () {
   const toastM = (m, err) => { if (typeof toast === 'function') toast(m, err ? 'err' : ''); };
   setTimeout(initMap, 0);
 
-  return { state: () => ST, items, groups, status, win, thaiOf, setThai, auto, slideId, importText, importFile, clear, importDict, clearDict, dictInfo, addWord, setName, mapSvg, onChange: f => subs.push(f), seedName, arp, geom: C.geom, vlim: C.vlim, core: C, esc, STH, COL, popupHtml, zoomAll, draw, save };
+  return { state: () => ST, items, groups, status, win, thaiOf, setThai, auto, slideId, importText, importFile, clear, importDict, clearDict, dictInfo, addWord, setName, mapSvg, sat, setSat, onChange: f => subs.push(f), seedName, arp, geom: C.geom, vlim: C.vlim, core: C, esc, STH, COL, popupHtml, zoomAll, draw, save };
 }());
 
 ;
