@@ -2672,10 +2672,11 @@ textarea.mcd-in{resize:vertical}
 @media (max-width:980px){.mcd-body{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto;overflow:auto}.mcd-ed,.mcd-pv{overflow:visible}.mcd-g4,.mcd-g8{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* the sheets (also used for printing; sized in mm so they print exactly) */
-.mc-sheet,.mm-sheet{position:relative;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;line-height:1.2}
+.mm-sheet{font-family:Arial,Helvetica,sans-serif}
+.mc-sheet{font-family:'TH Sarabun New','THSarabunNew','TH SarabunPSK',Tahoma,sans-serif}
+.mc-sheet,.mm-sheet{position:relative;background:#fff;color:#000;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;line-height:1.2}
 .mc-sheet{width:297mm;height:210mm;display:flex}
-.mc-half{position:relative;width:148.5mm;height:210mm;box-sizing:border-box;padding:6mm;overflow:hidden}
-.mc-half.mc-hp-left{padding-left:13mm}.mc-half.mc-hp-right{padding-right:13mm}.mc-half.mc-hp-top{padding-top:13mm}
+.mc-half{position:relative;width:148.5mm;height:210mm;box-sizing:border-box;overflow:hidden}
 .mc-cut{position:absolute;left:148.5mm;top:0;bottom:0;border-left:.35mm dashed #000;pointer-events:none}
 .mc-sc{position:absolute;font-size:12pt;line-height:1;font-weight:400}.mc-sc1{left:-2.4mm;top:2mm;transform:rotate(90deg)}.mc-sc2{left:-2.4mm;bottom:2mm;transform:rotate(90deg)}
 .mc-hole{position:absolute;width:6mm;height:6mm;border:.3mm dashed #333;border-radius:50%;box-sizing:border-box}
@@ -2683,33 +2684,33 @@ textarea.mcd-in{resize:vertical}
 .mc-tick{position:absolute;inset:0}
 .mc-tick::before,.mc-tick::after{content:'';position:absolute;border:0 solid #333}
 .mc-tick::before{left:50%;top:-1.6mm;bottom:-1.6mm;border-left-width:.2mm}.mc-tick::after{top:50%;left:-1.6mm;right:-1.6mm;border-top-width:.2mm}
-.mc-card{height:100%;display:flex;flex-direction:column;gap:2mm;font-size:7.5pt;min-height:0}
-.mc-t,.mc-mf{width:100%;border-collapse:collapse;table-layout:fixed}
-.mc-t td,.mc-t th,.mc-mf td,.mc-mf th{border:.25mm solid #000;padding:.5mm 1mm;overflow:hidden;text-overflow:clip;word-break:break-word}
-.mc-h{background:#e4e4e4;font-weight:700;font-size:6pt;text-align:center;letter-spacing:.02em;white-space:nowrap}
-.mc-v{text-align:center;font-size:8.5pt;height:5.4mm}
-.mc-big .mc-v{font-size:10.5pt;font-weight:700;height:8mm}
-.mc-big .mc-v.mc-sm{font-size:8.5pt}.mc-big .mc-v.mc-xs{font-size:7pt}
-.mc-s{font-size:7.6pt;height:5mm}.mc-l{text-align:left!important}
-.mc-mis{font-size:9.5pt;font-weight:700;white-space:pre-line;line-height:1.25}
-.mc-title{background:#000;color:#fff;font-weight:800;font-size:11pt;text-align:center;letter-spacing:.08em;padding:1.3mm!important}
-.mc-me td{font-weight:700;background:#fff3c4}
-.mc-metar{font-size:6.4pt;text-align:left;line-height:1.25;height:9mm;vertical-align:top}
-.mc-ov{flex:1;display:flex;flex-direction:column;border:.25mm solid #000;min-height:0}
-.mc-ovh{background:#e4e4e4;text-align:center;font-weight:700;font-size:7pt;padding:.6mm;border-bottom:.25mm solid #000;letter-spacing:.06em}
-.mc-ovb{flex:1;display:flex;min-height:0}
-.mc-ovt{flex:1.15;padding:1.5mm;font-size:7.8pt;line-height:1.4;white-space:pre-wrap;overflow:hidden}
-.mc-ovr{flex:1;border-left:.25mm solid #000;display:flex;flex-direction:column;min-width:0;min-height:0}
-.mc-pic{display:block;width:100%;flex:1;min-height:0;object-fit:contain}.mc-pic0{flex:1}
-.mc-af .mc-v{height:5mm;font-size:7pt}
-.mc-bt{background:#000;color:#fff;font-weight:800;font-size:11pt;text-align:center;letter-spacing:.08em;padding:1.3mm}
-.mc-bsub{margin-left:3mm;font-size:8pt;font-weight:600;letter-spacing:0}
-.mc-bt.mc-note{background:#e4e4e4;color:#000;font-size:8pt;padding:.6mm;border:.25mm solid #000}
-.mc-wbg{display:flex;flex-direction:column;gap:2mm}
-.mc-wb td.mc-l{font-weight:700;font-size:8.5pt;text-align:left}.mc-wb .mc-wv{font-weight:800;font-size:10.5pt;height:5.2mm}.mc-u{font-size:7pt;color:#222}
-.mc-cgw svg{display:block;width:100%;height:auto;max-height:54mm}.mc-cg0{border:.25mm dashed #777;padding:6mm;text-align:center;font-size:8pt;color:#555}
-.mc-nb{flex:1;border:.25mm solid #000;padding:1.5mm;font-size:8pt;line-height:1.4;white-space:pre-wrap;overflow:hidden;min-height:14mm}
-.mc-pw svg{display:block;width:100%;height:auto;max-height:50mm}
+/* the card = the unit's Excel card: 125.3 x 170.3 mm, 8 columns, rows of 4.69 mm, TH Sarabun (sizes measured against the Excel print: TH Sarabun PSK 11.4 pt there = 2.43 mm here; the embedded New face is size-adjusted 116 %) */
+.mc-card{position:absolute;left:11.6mm;top:18.8mm;width:125.3mm;box-sizing:border-box;background:#fff}
+.mc-half.mc-hp-left .mc-card{left:17.4mm}.mc-half.mc-hp-right:not(.mc-hp-left) .mc-card{left:5.8mm}
+.mc-grid{display:grid;grid-template-columns:13.62% repeat(6,12.3%) 12.6%;border:.35mm solid #000;line-height:1}
+.mc-c{box-sizing:border-box;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;white-space:nowrap;padding:0 .4mm .3mm;border-right:.25mm solid #505050;border-bottom:.25mm solid #505050;font-size:2.43mm}
+.mc-c.mc-re{border-right:0}.mc-c.mc-be{border-bottom:0}
+.mc-title{background:#000;color:#fff;border-color:#000;border-bottom:0}
+.mc-h{background:#d9d9d9}.mc-h2{background:#e7e6e6;border-color:#000}
+.mc-v{font-size:2.85mm}.mc-l{justify-content:flex-start!important}
+.mc-v.mc-sm{font-size:2.15mm}.mc-v.mc-xs{font-size:1.7mm}.mc-v.mc-rw{font-size:2.45mm}
+.mc-me{background:#ff0}
+.mc-tx{white-space:normal;font-size:2.43mm;line-height:4.692mm;text-align:left;padding-top:0}
+.mc-ovh{justify-content:flex-start;padding-left:.7mm;border-right:0;border-bottom:.35mm solid #000;border-top:.35mm solid #000}.mc-ovh span{text-decoration:underline;text-underline-offset:.3mm}
+.mc-ovt{flex-direction:column;align-items:flex-start;justify-content:flex-start;padding:0 .6mm;border-right:.35mm solid #000;border-bottom:.35mm solid #000;white-space:pre-wrap}
+.mc-ln{line-height:4.692mm;min-height:4.692mm;font-size:2.43mm}
+.mc-ovp{display:block;padding:0;border-bottom:.35mm solid #000;border-right:0}
+.mc-pic{display:block;width:100%;height:100%;object-fit:contain}
+.mc-mf{background:#fff;border:.25mm solid #000!important}
+.mc-bgrid{grid-template-columns:25.5% 13% 12.05% 49.45%;grid-template-rows:9.07mm repeat(7,8.71mm) 9.07mm 1fr;height:170.3mm}
+.mc-bk{background:#000;color:#fff;justify-content:flex-start;font-size:2.3mm;border:0;padding:0}
+.mc-bkt{display:block;width:50.55%;text-align:center}.mc-bsub{font-size:1.9mm;margin-left:1.5mm}
+.mc-bn{padding-left:.8mm}
+.mc-wl,.mc-wv,.mc-wu{border-right:0;border-bottom:.35mm solid #000;font-size:1.95mm}.mc-wl{justify-content:flex-start;padding-left:.8mm}.mc-wv{font-size:2.15mm}.mc-wu{justify-content:flex-start;font-size:1.9mm}.mc-wr{border-right:.35mm solid #000}
+.mc-nb{display:block;position:relative;padding:.7mm .8mm;white-space:pre-wrap;border:0;overflow:hidden;align-items:flex-start;justify-content:flex-start}
+.mc-nt{font-size:2.43mm;line-height:4.2mm}
+.mc-pw{position:absolute;left:1.2%;right:1.2%;bottom:.6mm}.mc-pw svg{display:block;width:100%;height:auto}
+.mc-cgw{position:absolute;left:50.55%;top:4.5mm;width:48.7%;height:72mm;z-index:2;background:#fff;border:.15mm solid #cfcfcf;display:flex;align-items:center;justify-content:center;overflow:hidden}.mc-cgw svg{display:block;width:100%;height:100%}.mc-cg0{padding:4mm;text-align:center;font-size:2.3mm;color:#555;white-space:normal}
 .mm-sheet{width:210mm;height:297mm;display:flex;flex-direction:column}
 .mm-cell{position:relative;width:210mm;height:148.5mm;box-sizing:border-box;padding:4mm;flex:none}
 .mm-in{position:relative;width:100%;height:100%;overflow:hidden}
@@ -32407,11 +32408,11 @@ const MC = (function () {
     const a = {};
     if (live) {
       const cs = X.wb.cs, kp = X.perf && X.perf.kp, vs = kp && kp.vs3 ? kp.vs3.find(q => q.f === s.vsFlap) : null;
-      a.tw = trimN(cs.to.w, 1); a.mac = trimN(cs.to.pct, 2); a.cg = trimN(cs.to.arm, 2);
-      if (vs && vs.r && vs.r.ok) a.vs = trimN(vs.r.vs, 1);
-      if (kp && kp.vlo) a.vr = trimN(kp.vlo.vlo, 1);
-      if (kp && kp.to) a.tod = trimN(kp.to.D, 0);
-      if (kp && kp.ld) a.ldd = trimN(kp.ld.D, 0);
+      const f2 = x => fin(x) ? (+x).toFixed(2) : ''; a.tw = f2(cs.to.w); a.mac = f2(cs.to.pct); a.cg = f2(cs.to.arm);
+      if (vs && vs.r && vs.r.ok) a.vs = f2(vs.r.vs);
+      if (kp && kp.vlo) a.vr = f2(kp.vlo.vlo);
+      if (kp && kp.to) a.tod = f2(kp.to.D);
+      if (kp && kp.ld) a.ldd = f2(kp.ld.D);
     }
     const o = {}; ['tw', 'mac', 'cg', 'vs', 'vr', 'tod', 'ldd'].forEach(k => { const t = w[k] != null && String(w[k]).trim() !== ''; o[k] = { v: t ? String(w[k]).trim() : (a[k] || ''), own: t ? 1 : 0 }; });
     o.live = live; o.cs = live ? X.wb.cs : null;
@@ -32434,13 +32435,13 @@ const MC = (function () {
 
   /* ---------------- mission profile chart (time / altitude) ---------------- */
   function profSvg(pts, W, H) {
-    const m = { l: 40, r: 12, t: 12, b: 34 }, tmax = Math.max(60, Math.ceil((Math.max.apply(null, pts.map(p => p.t).concat([0])) + 10) / 10) * 10), amax = Math.max(1000, Math.ceil((Math.max.apply(null, pts.map(p => p.a).concat([0])) + 400) / 500) * 500);
-    const X = t => m.l + (W - m.l - m.r) * t / tmax, Y = a => H - m.b - (H - m.t - m.b) * a / amax, as = amax > 6000 ? 2000 : 500, ts = tmax > 100 ? 20 : 10;
+    const m = { l: 52, r: 12, t: 12, b: 34 }, tmax = Math.max(120, Math.ceil((Math.max.apply(null, pts.map(p => p.t).concat([0])) + 10) / 10) * 10), amax = Math.max(1000, Math.ceil((Math.max.apply(null, pts.map(p => p.a).concat([0])) + 400) / 500) * 500);
+    const X = t => m.l + (W - m.l - m.r) * t / tmax, Y = a => H - m.b - (H - m.t - m.b) * a / amax, as = amax > 6000 ? 2000 : 500, ts = tmax > 120 ? 20 : 10;
     let s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" class="mc-prof" role="img" aria-label="Mission profile"><rect width="' + W + '" height="' + H + '" fill="#fff"/>';
     for (let a = 0; a <= amax; a += as) s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(a) + '" y2="' + Y(a) + '" stroke="#d6d6d6"/><text x="' + (m.l - 5) + '" y="' + (Y(a) + 3.5) + '" text-anchor="end" font-size="10" fill="#444">' + a + '</text>';
     for (let t = 0; t <= tmax; t += ts) s += '<line y1="' + m.t + '" y2="' + (H - m.b) + '" x1="' + X(t) + '" x2="' + X(t) + '" stroke="#e6e6e6"/><text x="' + X(t) + '" y="' + (H - m.b + 13) + '" text-anchor="middle" font-size="10" fill="#444">' + t + '</text>';
     s += '<rect x="' + m.l + '" y="' + m.t + '" width="' + (W - m.l - m.r) + '" height="' + (H - m.t - m.b) + '" fill="none" stroke="#999"/>';
-    s += '<text x="' + (W / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="10.5" fill="#222" font-weight="700">Time ( minute )</text><text transform="translate(10 ' + (H / 2) + ') rotate(-90)" text-anchor="middle" font-size="10.5" fill="#222" font-weight="700">Altitude</text>';
+    s += '<text x="' + (W / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="10.5" fill="#222" font-weight="700">Time ( minute )</text><text transform="translate(11 ' + (H / 2) + ') rotate(-90)" text-anchor="middle" font-size="10.5" fill="#222" font-weight="700">Altitude</text>';
     const sorted = pts.slice().sort((a, b) => a.t - b.t);
     if (sorted.length) s += '<polyline fill="none" stroke="#6fa8c4" stroke-width="1.6" points="' + sorted.map(p => X(p.t).toFixed(1) + ',' + Y(p.a).toFixed(1)).join(' ') + '"/>';
     let prevUp = false, lowK = 0;
@@ -32458,46 +32459,63 @@ const MC = (function () {
   /* ---------------- the two faces of a card ---------------- */
   const td = (cls, kids, attrs) => T('td', cls, kids, attrs), th = (cls, kids, attrs) => T('th', cls, kids, attrs);
   const lines = txt => String(txt == null ? '' : txt).split('\n').map(l => T('div', 'mc-ln', l === '' ? ' ' : l));
+  const AD = x => String(x == null ? '' : x).replace(/[๐-๙]/g, d => '๐๑๒๓๔๕๖๗๘๙'.indexOf(d));
+  /* The card follows the unit's Excel card (Mission_Card.xlsx): one 8-column grid, every row 4.69 mm, TH Sarabun, grey caption cells, a yellow row for this aircraft.
+     125.3 × 170.3 mm; cells are placed by row / column so nothing depends on how a browser sizes table rows. */
   function cardFront(R, ai) {
-    const s = st(), rows = R.rows, n = rows.length, k = rows[ai] ? ai : 0;
-    const order = [rows[k]].concat(rows.filter((r, i) => i !== k));                    // this aircraft first (highlighted), then the others
-    const card = T('div', 'mc-card mc-front');
-    const t1 = T('table', 'mc-t');
-    const v = key => R[key].v;
-    t1.append(T('tbody', '', [
-      T('tr', '', td('mc-title', s.f.title && s.f.title.trim() ? s.f.title.trim() : 'MISSION CARD 501 SQUADRON', { colspan: 8 })),
-      T('tr', '', ['CALLSIGN', 'AREA', 'STEP', 'START', 'TAXI', 'TAKEOFF', 'LANDING', 'LOG'].map(x => th('mc-h', x))),
-      T('tr', 'mc-big', ['callsign', 'area', 'step', 'start', 'taxi', 'takeoff', 'landing', 'log'].map(x => td('mc-v' + (String(v(x)).length > 7 ? (String(v(x)).length > 12 ? ' mc-xs' : ' mc-sm') : ''), v(x)))),
-      T('tr', '', [th('mc-h', 'MISSION', { colspan: 2 }), th('mc-h', 'IFF', { colspan: 2 }), th('mc-h', 'MANUAL'), th('mc-h', 'FUEL STATUS', { colspan: 3 })]),
-      T('tr', '', [td('mc-v mc-mis', R.sorties && R.sorties.length ? R.sorties.join('\n') : v('mission'), { colspan: 2, rowspan: 2 }), td('mc-v', v('iff'), { colspan: 2, rowspan: 2 }), td('mc-v', v('manual'), { rowspan: 2 }), th('mc-h', 'FUEL LOAD'), th('mc-h', 'BINGO'), th('mc-h', 'JOKER')]),
-      T('tr', '', [td('mc-v', v('fuel') ? v('fuel') : ''), td('mc-v', v('bingo')), td('mc-v', v('joker') || '-')]),
-      T('tr', '', ['A/C NO.', 'C/S', 'PILOT', 'CO-PILOT', 'T/O', 'L/D'].map(x => th('mc-h', x)).concat([th('mc-h', 'AREA/ALT.', { colspan: 2 })]))
-    ]));
-    const body = t1.firstChild;
-    const nrow = Math.max(5, order.length);
-    for (let i = 0; i < nrow; i++) { const r = order[i]; body.append(T('tr', i === 0 && r ? 'mc-me' : '', r ? [r.no, r.cs, r.pilot, r.copilot, r.to, r.ld].map(x => td('mc-v mc-s', x)).concat([td('mc-v mc-s', r.area, { colspan: 2 })]) : [0, 1, 2, 3, 4, 5].map(() => td('mc-v mc-s', '')).concat([td('mc-v mc-s', '', { colspan: 2 })]))); }
-    body.append(T('tr', '', [th('mc-h', 'AIRWORK'), th('mc-h mc-l', 'METAR', { colspan: 7 })]), T('tr', '', [td('mc-v mc-s', v('airwork')), td('mc-v mc-s mc-l mc-metar', v('metar'), { colspan: 7 })]));
-    card.append(t1);
-    const ov = T('div', 'mc-ov');
-    const mf = s.minfuel.filter(q => (q.a || '').trim() || (q.v || '').trim());
-    ov.append(T('div', 'mc-ovh', 'OVERVIEW'), T('div', 'mc-ovb', [T('div', 'mc-ovt', lines(R.overview)), T('div', 'mc-ovr', [s.pic ? T('img', 'mc-pic', null, { src: s.pic, alt: '' }) : T('div', 'mc-pic0'), mf.length ? T('table', 'mc-mf', T('tbody', '', [T('tr', '', th('mc-h', 'Minimum Fuel', { colspan: 2 }))].concat(mf.map(q => T('tr', '', [td('mc-v mc-s', q.a), td('mc-v mc-s', (q.v || '') + (q.v ? ' ' + (s.fu || 'gal') : ''))]))))) : null])]));
-    card.append(ov);
-    const t2 = T('table', 'mc-t mc-af'), ap = R.apts.slice(0, 8), rowsN = Math.max(5, ap.length);
-    const tb = T('tbody', '', [T('tr', '', [th('mc-h', 'AIRFIELD', { rowspan: 2 }), th('mc-h', 'R/W', { rowspan: 2 }), th('mc-h', 'COM', { colspan: 3 }), th('mc-h', 'NAV', { colspan: 3 })]), T('tr', '', ['GND.', 'TWR.', 'APP.', 'NDB', 'TCN', 'VOR'].map(x => th('mc-h', x)))]);
-    for (let i = 0; i < rowsN; i++) { const a = ap[i]; tb.append(T('tr', '', a ? [a.c + (a.elev ? '(' + a.elev.replace(/'?$/, "'") + ')' : ''), a.rw, a.gnd || '-', a.twr || '-', a.app || '-', a.ndb || '-', a.tcn || '-', a.vor || '-'].map((x, j) => td('mc-v mc-s' + (j < 2 ? ' mc-l' : ''), x)) : [0, 1, 2, 3, 4, 5, 6, 7].map(() => td('mc-v mc-s', '')))); }
-    t2.append(tb); card.append(t2);
-    return card;
+    const s = st(), rows = R.rows, k = rows[ai] ? ai : 0, v = key => R[key].v;
+    const order = [rows[k]].concat(rows.filter((r, i) => i !== k));                    // this aircraft first (yellow), then the others
+    const na = Math.max(5, order.length), ap = R.apts.slice(0, 8), nf = Math.max(5, ap.length);
+    const mf = s.minfuel.filter(q => (q.a || '').trim() || (q.v || '').trim()).slice(0, 4);
+    const air = v('airwork'), met = 'METAR ' + (v('metar') || '').trim(), mr = met.length > 58 ? 2 : 1;
+    let r = 1; const cells = [];
+    const C = (cls, kids, row, col, rs, cs) => { cells.push(T('div', 'mc-c ' + cls + (col + (cs || 1) - 1 >= 8 ? ' mc-re' : ''), kids, { style: 'grid-row:' + row + '/span ' + (rs || 1) + ';grid-column:' + col + '/span ' + (cs || 1) })); };
+    const H = (txt, col, cs, row, rs, cls) => C('mc-h ' + (cls || ''), txt, row == null ? r : row, col, rs, cs);
+    const sz = (txt, a, b) => { const n = String(txt).length; return n > b ? ' mc-xs' : n > a ? ' mc-sm' : ''; };
+    /* title */
+    C('mc-title', s.f.title && s.f.title.trim() ? s.f.title.trim() : 'MISSION CARD 501 SQUADRON', r++, 1, 1, 8);
+    /* CALLSIGN … LOG */
+    ['CALLSIGN', 'AREA', 'STEP', 'START', 'TAXI', 'TAKEOFF', 'LANDING', 'LOG'].forEach((x, i) => H(x, i + 1, 1)); r++;
+    ['callsign', 'area', 'step', 'start', 'taxi', 'takeoff', 'landing', 'log'].forEach((x, i) => C('mc-v' + sz(v(x), 7, 12), v(x), r, i + 1)); r++;
+    /* MISSION / IFF / MANUAL / FUEL STATUS */
+    H('MISSION', 1, 2); H('IFF', 3, 2); H('MANUAL', 5, 1); H('FUEL STATUS', 6, 3); r++;
+    const mis = (R.sorties && R.sorties.length ? R.sorties.map(AD).join(' / ') : AD(v('mission'))).trim();
+    C('mc-v mc-mis' + sz(mis, 14, 22), mis, r, 1, 2, 2); C('mc-v', v('iff'), r, 3, 2, 2); C('mc-v', v('manual'), r, 5, 2, 1);
+    H('FUEL LOAD', 6, 1); H('BINGO', 7, 1); H('JOKER', 8, 1); r++;
+    C('mc-v', v('fuel'), r, 6); C('mc-v', v('bingo'), r, 7); C('mc-v', v('joker') || '-', r, 8); r++;
+    /* aircraft */
+    ['A/C NO.', 'C/S', 'PILOT', 'CO-PILOT', 'T/O', 'L/D'].forEach((x, i) => H(x, i + 1, 1)); H('AREA/ALT.', 7, 2); r++;
+    for (let i = 0; i < na; i++) { const q = order[i], y = i === 0 && q ? ' mc-me' : ''; [q && q.no, q && q.cs, q && q.pilot, q && q.copilot, q && q.to, q && q.ld].forEach((x, j) => C('mc-v' + y + sz(x || '', 7, 12), x || '', r, j + 1)); C('mc-v' + y, q ? q.area : '', r, 7, 1, 2); r++; }
+    /* AIRWORK / METAR (the unit's card has one row: AIRWORK caption, then METAR) */
+    if (air) { H('AIRWORK', 1, 1); C('mc-v mc-l mc-tx', air, r, 2, 1, 7); r++; H('METAR', 1, 1, r, mr); C('mc-v mc-l mc-tx', (v('metar') || '').trim(), r, 2, mr, 7); r += mr; }
+    else { H('AIRWORK', 1, 1, r, mr); C('mc-v mc-l mc-tx', met, r, 2, mr, 7); r += mr; }
+    /* OVERVIEW */
+    C('mc-ovh', T('span', '', 'OVERVIEW'), r++, 1, 1, 8);
+    const ovN = Math.max(4, 14 - (na - 5) - (nf - 5) - (mr - 1) - (air ? 2 : 0)), ov0 = r;
+    C('mc-ovt', lines(R.overview), r, 1, ovN, 4);
+    C('mc-ovp', s.pic ? T('img', 'mc-pic', null, { src: s.pic, alt: '' }) : null, r, 5, ovN, 4);
+    mf.forEach((q, i) => { const rr = ov0 + ovN - mf.length + i; C('mc-mf mc-v', q.a, rr, 7); C('mc-mf mc-v', (q.v || '') + (q.v ? ' ' + (s.fu || 'gal') : ''), rr, 8); });
+    r += ovN;
+    /* AIRFIELD */
+    H('AIRFIELD', 1, 1, r, 2, 'mc-h2'); H('R/W', 2, 1, r, 2, 'mc-h2'); H('COM', 3, 3, r, 1, 'mc-h2'); H('NAV', 6, 3, r, 1, 'mc-h2'); r++;
+    ['GND.', 'TWR.', 'APP.', 'NDB', 'TCN', 'VOR'].forEach((x, i) => H(x, i + 3, 1, r, 1, 'mc-h2')); r++;
+    for (let i = 0; i < nf; i++) { const a = ap[i], rw = a ? String(a.rw || '') : ''; (a ? [a.c + (a.elev ? '(' + a.elev.replace(/'?$/, "'") + ')' : ''), rw, a.gnd || '-', a.twr || '-', a.app || '-', a.ndb || '-', a.tcn || '-', a.vor || '-'] : ['', '', '', '', '', '', '', '']).forEach((x, j) => C('mc-v' + (j === 0 ? ' mc-l' : '') + (j === 1 ? (rw.length > 9 ? ' mc-xs' : rw.length > 6 ? ' mc-sm' : ' mc-rw') : ''), x, r, j + 1)); r++; }
+    const last = r - 1;
+    cells.forEach(c => { const m = /grid-row:(\d+)\/span (\d+)/.exec(c.getAttribute('style')); if (+m[1] + +m[2] - 1 >= last) c.classList.add('mc-be'); });
+    const rowsT = ['10.41mm'].concat(Array(last - 1).fill('4.692mm')).join(' ');
+    return T('div', 'mc-card mc-front mc-grid', cells, { style: 'grid-template-rows:' + rowsT });
   }
   function cardBack(R, ai) {
-    const s = st(), k = R.rows[ai] ? ai : 0, pf = R.perf[k], r = R.rows[k], card = T('div', 'mc-card mc-back');
-    const L = [['Total Weight', pf.tw, 'lbs.'], ['%MAC', pf.mac, '%'], ['C.G.', pf.cg, 'in'], ['Stall speed', pf.vs, s.vsFlap === 100 ? 'KCAS (flaps 100%)' : s.vsFlap === 0 ? 'KCAS (flaps 0%)' : 'KCAS (flaps 74%)'], ['Takeoff rotation speed', pf.vr, 'KCAS'], ['T/O distance to 50 feet', pf.tod, 'ft.'], ['L/D distance from 50 feet', pf.ldd, 'ft.']];
-    card.append(T('div', 'mc-bt', ['W&B PERFORMANCE', r.no || r.cs ? T('span', 'mc-bsub', (r.no ? 'A/C ' + r.no : '') + (r.cs ? '  ' + r.cs : '')) : null]));
-    const tbl = T('table', 'mc-t mc-wb', T('tbody', '', L.map(q => T('tr', '', [td('mc-l', q[0]), td('mc-v mc-wv', q[1].v), td('mc-u', q[2])]))));
+    const s = st(), k = R.rows[ai] ? ai : 0, pf = R.perf[k], q = R.rows[k], card = T('div', 'mc-card mc-back mc-grid mc-bgrid');
+    const L = [['Total Weight', pf.tw, 'lbs.'], ['%MAC', pf.mac, '%'], ['C.G.', pf.cg, 'in'], ['Stall speed (flaps ' + (s.vsFlap === 100 ? '100' : s.vsFlap === 0 ? '0' : '74') + '%)', pf.vs, 'KCAS'], ['Takeoff rotation speed', pf.vr, 'KCAS'], ['T/O distance to 50 feet', pf.tod, 'ft.'], ['L/D distance from 50 feet', pf.ldd, 'ft.']];
+    const put = (cls, kids, row, col, cs, rs) => card.append(T('div', 'mc-c ' + cls, kids, { style: 'grid-row:' + row + '/span ' + (rs || 1) + ';grid-column:' + col + '/span ' + (cs || 1) }));
+    put('mc-bk', T('span', 'mc-bkt', ['W&B PERFORMANCE', q.no || q.cs ? T('span', 'mc-bsub', (q.no ? ' A/C ' + q.no : '') + (q.cs ? ' ' + q.cs : '')) : null]), 1, 1, 4);
+    L.forEach((x, i) => { put('mc-wl', x[0], i + 2, 1); put('mc-wv', x[1].v, i + 2, 2); put('mc-wu mc-wr', x[2], i + 2, 3); });
+    put('mc-bk mc-bn', 'NOTE', 9, 1, 4);
+    put('mc-nb', [T('div', 'mc-nt', lines(s.note)), (() => { const pw = T('div', 'mc-pw'); pw.innerHTML = profSvg(R.prof, 640, 256); return pw; })()], 10, 1, 4);
     const chart = T('div', 'mc-cgw'), sv = cgSvg(pf);
     if (sv) chart.innerHTML = sv; else chart.append(T('div', 'mc-cg0', 'ยังไม่มีค่า W&B / %MAC สำหรับวาดกราฟ'));
-    card.append(T('div', 'mc-wbg', [tbl, chart]));
-    card.append(T('div', 'mc-bt mc-note', 'NOTE'), T('div', 'mc-nb', lines(s.note)));
-    const pw = T('div', 'mc-pw'); pw.innerHTML = profSvg(R.prof, 500, 250); card.append(pw);
+    card.append(chart);
     return card;
   }
 
