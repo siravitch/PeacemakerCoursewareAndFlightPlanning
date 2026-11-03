@@ -2679,14 +2679,8 @@ textarea.mcd-in{resize:vertical}
 .mc-half{position:relative;width:148.5mm;height:210mm;box-sizing:border-box;overflow:hidden}
 .mc-cut{position:absolute;left:148.5mm;top:0;bottom:0;border-left:.35mm dashed #000;pointer-events:none}
 .mc-sc{position:absolute;font-size:12pt;line-height:1;font-weight:400}.mc-sc1{left:-2.4mm;top:2mm;transform:rotate(90deg)}.mc-sc2{left:-2.4mm;bottom:2mm;transform:rotate(90deg)}
-.mc-hole{position:absolute;width:6mm;height:6mm;border:.3mm dashed #333;border-radius:50%;box-sizing:border-box}
-.mc-hole-left{left:4mm;top:calc(50% - 3mm)}.mc-hole-right{right:4mm;top:calc(50% - 3mm)}.mc-hole-top{top:4mm;left:calc(50% - 3mm)}
-.mc-tick{position:absolute;inset:0}
-.mc-tick::before,.mc-tick::after{content:'';position:absolute;border:0 solid #333}
-.mc-tick::before{left:50%;top:-1.6mm;bottom:-1.6mm;border-left-width:.2mm}.mc-tick::after{top:50%;left:-1.6mm;right:-1.6mm;border-top-width:.2mm}
-/* the card = the unit's Excel card: 125.3 x 170.3 mm, 8 columns, rows of 4.69 mm, TH Sarabun (sizes measured against the Excel print: TH Sarabun PSK 11.4 pt there = 2.43 mm here; the embedded New face is size-adjusted 116 %) */
+.mc-hole{position:absolute;left:calc(50% - .125mm);top:4mm;height:8mm;width:0;border-left:.25mm solid #000}
 .mc-card{position:absolute;left:11.6mm;top:18.8mm;width:125.3mm;box-sizing:border-box;background:#fff}
-.mc-half.mc-hp-left .mc-card{left:17.4mm}.mc-half.mc-hp-right:not(.mc-hp-left) .mc-card{left:5.8mm}
 .mc-grid{display:grid;grid-template-columns:13.62% repeat(6,12.3%) 12.6%;border:.35mm solid #000;line-height:1}
 .mc-c{box-sizing:border-box;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;white-space:nowrap;padding:0 .4mm .3mm;border-right:.25mm solid #505050;border-bottom:.25mm solid #505050;font-size:2.43mm}
 .mc-c.mc-re{border-right:0}.mc-c.mc-be{border-bottom:0}
@@ -32309,7 +32303,7 @@ const MC = (function () {
   const PROF0 = [['Ground Op', 0, 0], ['Departure', 15, 0], ['DEMO, SG x2', 17, 1000], ['SID, VFR DEP.', 30, 1000], ['AREA ENTRY', 35, 4000], ['Recovery (NDB RWY 18)', 38, 4000], ['Traffic Pattern', 45, 1000], ['Full Stop L/D', 60, 1000], ['L/D', 65, 0], ['Shut Down', 70, 0]].map(a => ({ n: a[0], t: a[1], a: a[2] }));
   const dflt = () => ({
     v: 1, tab: 'card', f: {}, fu: 'gal', tt: '', tk: 'takeoff', lg: '', vsFlap: 74, ac: [], overview: null, minfuel: [{ a: '', v: '' }, { a: '', v: '' }], apt: null, ov: {}, note: '', prof: null, pic: '',
-    opt: { mode: 'pair', swap: false, holes: 'left', cut: true },
+    opt: { mode: 'pair', swap: false, mark: true, cut: true },
     mm: { src: 'auto', pts: [], title: '', base: 'sat', rot: 'auto', copies: 2, brg: 'tc', varE: '', rings: '', fs: 10.5, boxes: {}, custom: [], pillOn: true }
   });
   let S = dflt(), loaded = false;
@@ -32317,6 +32311,7 @@ const MC = (function () {
     loaded = true;
     try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.v === 1) { const d = dflt(); S = Object.assign(d, j); S.opt = Object.assign(d.opt, j.opt || {}); S.mm = Object.assign(d.mm, j.mm || {}); S.f = j.f || {}; S.ov = j.ov || {}; S.ac = Array.isArray(j.ac) ? j.ac : [];
       /* older saves had five clock boxes + two flight-time boxes: keep the first typed clock as the one anchor, and the typed LOG/flight time as the one LOG */
+      if (j.opt && j.opt.mark == null) S.opt.mark = j.opt.holes !== 'none'; delete S.opt.holes;                    // old side/top hole guides → one centre mark for the 2-hole punch
       const OR = ['step', 'start', 'taxi', 'takeoff'], F = S.f;
       if (!S.tt) for (const k of OR) if (F[k] != null && String(F[k]).trim() !== '') { S.tt = String(F[k]).trim(); S.tk = k; break; }
       if (!S.lg) S.lg = F.log != null && String(F.log).trim() !== '' ? String(F.log).trim() : (j.dur && j.dur !== '1.5' ? String(j.dur) : '');
@@ -32728,12 +32723,13 @@ const MC = (function () {
   }
 
   /* ---------------- sheets ---------------- */
-  const holeNodes = (pos) => pos === 'none' ? [] : (pos === 'both' ? ['left', 'right'] : [pos]).map(p => T('div', 'mc-hole mc-hole-' + p, [T('i', 'mc-tick')]));
-  function half(card, holes) { return T('div', 'mc-half mc-hp-' + (holes === 'both' ? 'left right' : holes === 'none' ? 'none' : holes).replace(/ /g, ' mc-hp-'), [card].concat(holeNodes(holes))); }
+  /* binder: a 2-hole punch at the top edge → just a centre mark above each card (punch the paper so its centre sits on the mark) */
+  const markNode = on => on ? [T('div', 'mc-hole')] : [];
+  function half(card, mark) { return T('div', 'mc-half', [card].concat(markNode(mark))); }
   function cardSheets(R) {
     const s = st(), n = R.rows.length, pairs = [];
     if (s.opt.mode === 'dup' || n < 2) pairs.push([0, 0]); else for (let i = 0; i < n; i += 2) pairs.push([i, i + 1 < n ? i + 1 : i]);
-    const mk = (a, b, back) => { const fa = back ? MC.cardBack(R, a) : MC.cardFront(R, a), fb = back ? MC.cardBack(R, b) : MC.cardFront(R, b); const L = back && s.opt.swap ? [fb, fa] : [fa, fb]; return T('div', 'mc-sheet', [half(L[0], s.opt.holes), half(L[1], s.opt.holes), s.opt.cut ? T('div', 'mc-cut', [T('b', 'mc-sc mc-sc1', '✂'), T('b', 'mc-sc mc-sc2', '✂')]) : null]); };
+    const mk = (a, b, back) => { const fa = back ? MC.cardBack(R, a) : MC.cardFront(R, a), fb = back ? MC.cardBack(R, b) : MC.cardFront(R, b); const L = back && s.opt.swap ? [fb, fa] : [fa, fb]; return T('div', 'mc-sheet', [half(L[0], s.opt.mark), half(L[1], s.opt.mark), s.opt.cut ? T('div', 'mc-cut', [T('b', 'mc-sc mc-sc1', '✂'), T('b', 'mc-sc mc-sc2', '✂')]) : null]); };
     const out = []; pairs.forEach(p => { const f = mk(p[0], p[1], 0), b = mk(p[0], p[1], 1); f.dataset.face = 'front'; b.dataset.face = 'back'; out.push(f, b); }); return out;
   }
   function mmSheet(r, copies) {
@@ -32826,11 +32822,11 @@ const MC = (function () {
       sec('5 · NOTE (หลังบัตร) · Mission profile', noteBox(R)),
       sec('6 · การจัดหน้า / พิมพ์', [
         fld('วางบัตรบนแผ่น', sel(s.opt, 'mode', [['pair', 'ซ้าย = ลำที่ 1 · ขวา = ลำที่ 2 (ตามตัวอย่าง)'], ['dup', 'ซ้ำบัตรของลำที่ 1 ทั้งสองใบ']])),
-        fld('จุดเจาะรู (วงกลมไกด์ที่กึ่งกลางขอบ)', sel(s.opt, 'holes', [['left', 'ขอบซ้ายของแต่ละใบ'], ['right', 'ขอบขวา'], ['top', 'ขอบบน (กึ่งกลาง)'], ['both', 'ซ้าย + ขวา'], ['none', 'ไม่แสดง']])),
+        chk(s.opt, 'mark', 'เครื่องหมายกึ่งกลางด้านบนของแต่ละใบ (ไว้เล็งเครื่องเจาะ 2 รู — เจาะให้กึ่งกลางของเครื่องเจาะตรงขีด)'),
         chk(s.opt, 'cut', 'เส้นแนวตัด (ประ) กลางแผ่น'),
         chk(s.opt, 'swap', 'สลับซ้าย–ขวาของหน้าหลัง (พิมพ์สองหน้าแบบพลิกด้านสั้น ให้หน้าหลังตรงกับหน้าหน้าของบัตรเดียวกัน)'),
         fld('ความเร็วหยุดนิ่ง (stall) ที่แสดงบนบัตร', sel(s, 'vsFlap', [[74, 'flaps 74 %'], [100, 'flaps 100 %'], [0, 'flaps 0 %']])),
-        note('พิมพ์กระดาษ A4 แนวนอน · ไม่ต้องขยาย/ย่อ (Scale 100 %) · พับครึ่งหรือตัดตามเส้นประ จะได้บัตรขนาดครึ่ง A4 (A5) สองใบ · เจาะรูตามวงกลมไกด์เพื่อเก็บใน Checklist')
+        note('พิมพ์กระดาษ A4 แนวนอน · ไม่ต้องขยาย/ย่อ (Scale 100 %) · พับครึ่งหรือตัดตามเส้นประ จะได้บัตรขนาดครึ่ง A4 (A5) สองใบ · เจาะ 2 รูด้านบน โดยให้กึ่งกลางของเครื่องเจาะตรงขีดกึ่งกลางที่พิมพ์ไว้ แล้วเก็บใน Checklist')
       ], false));
   }
   function metarBox(f, B) {
