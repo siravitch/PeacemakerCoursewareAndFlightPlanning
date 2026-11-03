@@ -2677,9 +2677,8 @@ textarea.mcd-in{resize:vertical}
 .mc-sheet,.mm-sheet{position:relative;background:#fff;color:#000;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;line-height:1.2}
 .mc-sheet{width:297mm;height:210mm;display:flex}
 .mc-half{position:relative;width:148.5mm;height:210mm;box-sizing:border-box;overflow:hidden}
-.mc-cut{position:absolute;left:148.5mm;top:0;bottom:0;border-left:.35mm dashed #000;pointer-events:none}
-.mc-sc{position:absolute;font-size:12pt;line-height:1;font-weight:400}.mc-sc1{left:-2.4mm;top:2mm;transform:rotate(90deg)}.mc-sc2{left:-2.4mm;bottom:2mm;transform:rotate(90deg)}
-.mc-hole{position:absolute;left:calc(50% - .125mm);top:4mm;height:8mm;width:0;border-left:.25mm solid #000}
+.mc-cut{position:absolute;left:148.5mm;top:0;bottom:0;border-left:.25mm dashed #bdbdbd;pointer-events:none}
+.mc-hole{position:absolute;left:calc(50% - .125mm);top:4mm;height:8mm;width:0;border-left:.25mm solid #bdbdbd}
 .mc-card{position:absolute;left:11.6mm;top:18.8mm;width:125.3mm;box-sizing:border-box;background:#fff}
 .mc-grid{display:grid;grid-template-columns:13.62% repeat(6,12.3%) 12.6%;border:.35mm solid #000;line-height:1}
 .mc-c{box-sizing:border-box;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;white-space:nowrap;padding:0 .4mm .3mm;border-right:.25mm solid #505050;border-bottom:.25mm solid #505050;font-size:2.43mm}
@@ -2710,8 +2709,7 @@ textarea.mcd-in{resize:vertical}
 .mm-in{position:relative;width:100%;height:100%;overflow:hidden}
 .mm-flat{position:absolute;inset:0}.mm-flat svg{width:100%;height:100%;display:block}
 .mm-rot{position:absolute;left:50%;top:50%;width:140mm;height:198mm;transform:translate(-50%,-50%) rotate(90deg)}.mm-rot svg{width:100%;height:100%;display:block}
-.mm-cut{position:absolute;left:0;right:0;top:148.5mm;border-top:.35mm dashed #000;pointer-events:none}
-.mm-cut .mc-sc1{left:2mm;top:-3.2mm;transform:none}
+.mm-cut{position:absolute;left:0;right:0;top:148.5mm;border-top:.25mm dashed #bdbdbd;pointer-events:none}
 
 @media print{
   html[data-mcd-print]{filter:none!important}
@@ -32729,13 +32727,13 @@ const MC = (function () {
   function cardSheets(R) {
     const s = st(), n = R.rows.length, pairs = [];
     if (s.opt.mode === 'dup' || n < 2) pairs.push([0, 0]); else for (let i = 0; i < n; i += 2) pairs.push([i, i + 1 < n ? i + 1 : i]);
-    const mk = (a, b, back) => { const fa = back ? MC.cardBack(R, a) : MC.cardFront(R, a), fb = back ? MC.cardBack(R, b) : MC.cardFront(R, b); const L = back && s.opt.swap ? [fb, fa] : [fa, fb]; return T('div', 'mc-sheet', [half(L[0], s.opt.mark), half(L[1], s.opt.mark), s.opt.cut ? T('div', 'mc-cut', [T('b', 'mc-sc mc-sc1', '✂'), T('b', 'mc-sc mc-sc2', '✂')]) : null]); };
+    const mk = (a, b, back) => { const fa = back ? MC.cardBack(R, a) : MC.cardFront(R, a), fb = back ? MC.cardBack(R, b) : MC.cardFront(R, b); const L = back && s.opt.swap ? [fb, fa] : [fa, fb]; return T('div', 'mc-sheet', [half(L[0], s.opt.mark), half(L[1], s.opt.mark), s.opt.cut ? T('div', 'mc-cut') : null]); };
     const out = []; pairs.forEach(p => { const f = mk(p[0], p[1], 0), b = mk(p[0], p[1], 1); f.dataset.face = 'front'; b.dataset.face = 'back'; out.push(f, b); }); return out;
   }
   function mmSheet(r, copies) {
     const cell = () => { const inn = T('div', 'mm-in'); const wrap = T('div', r.rot90 ? 'mm-rot' : 'mm-flat'); wrap.innerHTML = r.html; inn.append(wrap); return T('div', 'mm-cell', inn); };
     const cells = [cell()]; if (copies > 1) cells.push(cell());
-    return T('div', 'mm-sheet', cells.concat(copies > 1 ? [T('div', 'mm-cut', [T('b', 'mc-sc mc-sc1', '✂')])] : []));
+    return T('div', 'mm-sheet', cells.concat(copies > 1 ? [T('div', 'mm-cut')] : []));
   }
 
   /* ---------------- preview ---------------- */
