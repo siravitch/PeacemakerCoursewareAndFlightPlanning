@@ -23864,6 +23864,166 @@ MODS.supply = (function () {
 
 ;
 /* ==========================================================================
+   FULL SORTIE — the plan from take-off to landing for the seven mission tabs
+   (Photo / Recon, Loud speaker, Towing, Rain making, Leaflet, Aerial Supply, Tactical).
+   The tabs plan the task area only; this panel (tick "Full sortie" in each tab) adds
+     take-off airfield → transit points → task area → N task rounds → transit points → landing airfield
+   · TIME  = distance / ground speed (the cruise TAS the pilot decides, wind from the Navigation tab)
+   · FUEL  = the W&B "Fuel plan" (climb, NM per gallon, fuel flows … read from the T.O. charts at the loading already worked there)
+             run through the same C.fuelPlan: taxi, climb, cruise out, round 1, transit + round 2 … round N, return climb, cruise back,
+             approach, reserve, BINGO and one JOKER per round.  Without a W&B fuel plan only the times are shown.
+   Planning arithmetic only — the pilot's own figures and the T.O. govern.
+   ========================================================================== */
+const SORTIEPLAN = (function () {
+  const LB2KG = 0.45359237, KG2LB = 1 / LB2KG;
+  const num = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : NaN; };
+  const fin = Number.isFinite;
+  const parseHM = s => { const m = /^\s*(\d{1,2}):?(\d{2})\s*$/.exec(String(s == null ? '' : s)); return m ? (+m[1]) * 60 + (+m[2]) : NaN; };
+  const hm = min => { const t = ((Math.round(min) % 1440) + 1440) % 1440; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+  const dur = min => (fin(min) ? (Math.floor(Math.round(min) / 60) ? Math.floor(Math.round(min) / 60) + ' h ' : '') + String(Math.round(min) % 60).padStart(2, '0') + ' min' : '—');
+  const nm1 = x => (fin(x) ? x.toFixed(1) : '—');
+  const kg = lb => (fin(lb) ? String(Math.round(lb * LB2KG)) : '—');
+
+  /* ---- the plan (pure) ----
+     o: { out:[{name,lat,lon}] take-off airfield + points to the area, entry:[lat,lon], exit:[lat,lon], back:[{…}] points back + landing airfield,
+          tas, wd, ws, varE, etdMin, taskKt, rounds, roundMin, roundNm, repoMin, taskFfLb, fuelO (the W&B fuel inputs, or null) } */
+  function plan(o) {
+    const warn = [], rounds = Math.max(1, Math.min(20, Math.round(o.rounds) || 1));
+    const nav = (wps) => C.navPlan({ wps, tas: o.tas, ff: 0, reserveMin: 0, wd: o.wd, ws: o.ws, varE: o.varE || 0, depMin: 0 });
+    const wo = o.out.concat([{ name: 'AREA IN', lat: o.entry[0], lon: o.entry[1] }]), wb = [{ name: 'AREA OUT', lat: o.exit[0], lon: o.exit[1] }].concat(o.back);
+    const po = nav(wo), pb = nav(wb);
+    po.warnings.concat(pb.warnings).forEach(w => warn.push(w));
+    if (po.legs.some(l => !l.ok) || pb.legs.some(l => !l.ok)) return { ok: false, warn, reason: 'The wind is stronger than the cruise TAS on a leg — raise the TAS or check the wind in the Navigation tab.' };
+    const outNm = po.totals.distNm, outMin = po.totals.eteMin, backNm = pb.totals.distNm, backMin = pb.totals.eteMin;
+    const gsOut = outMin > 0 ? outNm / outMin * 60 : o.tas, gsBack = backMin > 0 ? backNm / backMin * 60 : o.tas;
+    /* one round: distance and time */
+    const legNm = C.m2nm(C.haversine(o.entry, o.exit)), rNm = o.roundNm > 0 ? o.roundNm : legNm;
+    let rMin, rSrc;
+    if (o.roundMin > 0) { rMin = o.roundMin; rSrc = 'typed'; } else if (rNm >= 0.3) { rMin = rNm / o.taskKt * 60; rSrc = 'distance'; } else { rMin = 10; rSrc = 'default'; }
+    const repoNm = o.repoMin * o.taskKt / 60;
+    const F0 = o.fuelO && o.fuelO.out ? o.fuelO : null;
+    const rows = [];
+    let fuel = null;
+    const climbNm = F0 && num(F0.climb.nm) > 0 ? F0.climb.nm : 0, climbMin0 = F0 && num(F0.climb.min) > 0 ? F0.climb.min : 0;
+    let cruiseOutNm = outNm - climbNm, climbScale = 1;
+    if (F0 && cruiseOutNm < 0) { warn.push('The way to the task area (' + nm1(outNm) + ' NM) is shorter than the climb to the cruise altitude of the W&B plan (' + nm1(climbNm) + ' NM) — the aircraft will not reach it; the climb is cut short.'); climbScale = climbNm > 0 ? outNm / climbNm : 1; cruiseOutNm = 0; }
+    const rcNm = F0 && num(F0.rclimb && F0.rclimb.nm) > 0 ? F0.rclimb.nm : 0;
+    let cruiseBackNm = backNm - rcNm; if (F0 && cruiseBackNm < 0) { cruiseBackNm = 0; warn.push('The way back is shorter than the return climb of the W&B plan.'); }
+    if (F0) {
+      const f = F0, hwOut = o.tas - gsOut, hwBack = o.tas - gsBack, ffTask = o.taskFfLb > 0 ? o.taskFfLb : num(f.task && f.task.ff);
+      const tasks = [];
+      for (let i = 1; i < rounds; i++) tasks.push({ min: rMin, ff: ffTask, nm: repoNm, nmGal: num(f.out.nmGal), kt: o.taskKt, w: 0, ft: num(f.task && f.task.ft) });
+      const fo = { taxi: f.taxi, climb: { fuel: f.climb.fuel * climbScale, min: climbMin0 * climbScale, nm: climbNm * climbScale },
+        out: { nm: cruiseOutNm, nmGal: f.out.nmGal, kt: o.tas, w: hwOut, ft: f.out.ft }, task: { min: rMin, ff: ffTask, ft: f.task && f.task.ft }, tasks,
+        rclimb: f.rclimb, back: { nm: cruiseBackNm, nmGal: num(f.back && f.back.nmGal) > 0 ? f.back.nmGal : f.out.nmGal, kt: o.tas, w: hwBack, ft: f.back && f.back.ft },
+        appr: f.appr, alt: f.alt, res: f.res, jokerMin: f.jokerMin, frz: f.frz, icing: f.icing, onBoard: f.onBoard, maxFuel: f.maxFuel };
+      if (!(num(f.out.nmGal) > 0)) warn.push('NM per gallon is missing in the W&B fuel plan — fuel for the cruise legs is not counted.');
+      fuel = C.fuelPlan(fo);
+      const dist = { taxi: 0, climb: climbNm * climbScale, out: cruiseOutNm, task: rNm, transit: repoNm, rclimb: rcNm, back: cruiseBackNm, appr: 0, alt: 0 };
+      let t = o.etdMin, cum = 0, round = 0;
+      fuel.seg.forEach(q => {
+        let min = q.min;
+        if (q.k === 'out') min = cruiseOutNm / gsOut * 60; else if (q.k === 'back') min = cruiseBackNm / gsBack * 60; else if (q.k === 'transit') min = o.repoMin;
+        if (q.k === 'alt') { rows.push({ k: 'alt', n: q.n + ' (planning only — not flown)', nm: NaN, min: NaN, fuel: q.fuel, left: q.after, at: '' }); return; }
+        if (q.k === 'task') { round++; }
+        if (q.k !== 'taxi' && q.k !== 'appr' && min === 0 && q.fuel === 0) return;
+        cum += min; t += min;
+        rows.push({ k: q.k, n: q.k === 'task' ? 'Round ' + round + ' of ' + rounds + (rounds === 1 ? '' : '') : q.n, nm: dist[q.k], min, fuel: q.fuel, left: q.after, at: hm(t) });
+      });
+    } else {
+      let t = o.etdMin;
+      const add = (k, n, nm, min) => { t += min; rows.push({ k, n, nm, min, fuel: NaN, left: NaN, at: hm(t) }); };
+      add('out', 'Take-off → task area (climb included, no W&B plan)', outNm, outMin);
+      for (let i = 1; i <= rounds; i++) { if (i > 1) add('transit', 'Re-position', repoNm, o.repoMin); add('task', 'Round ' + i + ' of ' + rounds, rNm, rMin); }
+      add('back', 'Task area → landing', backNm, backMin);
+    }
+    const flown = rows.filter(r => r.k !== 'alt');
+    const totMin = flown.reduce((a, r) => a + (fin(r.min) ? r.min : 0), 0), totNm = flown.reduce((a, r) => a + (fin(r.nm) ? r.nm : 0), 0);
+    return { ok: true, warn, rows, totMin, totNm, outNm, backNm, outMin, backMin, gsOut, gsBack, rounds, rNm, rMin, rSrc, repoNm, fuel, hasFuel: !!fuel, landing: o.etdMin + totMin };
+  }
+
+  /* ---- points of the task area for each tab: [entry, exit] ---- */
+  const P0 = e => (e && e.pts && e.pts[0] ? [e.pts[0].lat, e.pts[0].lon] : null);
+  const PL = e => (e && e.pts && e.pts.length ? [e.pts[e.pts.length - 1].lat, e.pts[e.pts.length - 1].lon] : null);
+  const CEN = e => { const r = e && (e.ring || e.pts); if (!r || !r.length) return null; const g = q => (Array.isArray(q) ? q : [q.lat, q.lon]); return [r.reduce((a, q) => a + g(q)[0], 0) / r.length, r.reduce((a, q) => a + g(q)[1], 0) / r.length]; };
+  const AREA = {
+    photo: M => ({ ap: [CEN(M.poly), null], flir: [P0(M.ip), P0(M.tgt)], mov: [P0(M.mav), P0(M.mtg)], srch: [P0(M.dat), null] }[M.mt] || [CEN(M.poly), null]),
+    bcast: M => (M.mode === 'r' ? [P0(M.route), PL(M.route)] : [P0(M.target), null]),
+    tact: M => [P0(M.cp), P0(M.tgt)],
+    banner: M => [P0(M.editor), PL(M.editor)],
+    rain: M => (M.mode === 'l' ? [P0(M.thr), null] : [P0(M.cloud), null]),
+    leaf: M => [P0(M.ip), P0(M.tgt)],
+    supply: M => [P0(M.ip), P0(M.dz)]
+  };
+  const NAME = { photo: 'photo run / orbit', bcast: 'broadcast', tact: 'attack', banner: 'tow', rain: 'seeding', leaf: 'leaflet run', supply: 'supply drop' };
+
+  const ptsOf = e => e.pts.map(p => ({ name: p.name, lat: p.lat, lon: p.lon }));
+  const DEP0 = { name: 'WING5', lat: 11.7884, lon: 99.8046 };
+
+  function attach(M) {
+    const on = () => !!(M.inputs && M.inputs.sOn && M.inputs.sOn.checked);
+    M.sout = new PointsEditor({ id: M.id + 'so', title: 'Full sortie · take-off airfield, then the points to the task area', min: 1, max: 10, names: true, tag: (i) => (i === 0 ? { cls: 's', text: 'DEP' } : { cls: '', text: i }), defName: i => (i === 0 ? 'DEP' : 'OUT' + i), onChange: () => M.touch() });
+    M.sback = new PointsEditor({ id: M.id + 'sb', title: 'Full sortie · points back from the task area, then the landing airfield', min: 1, max: 10, names: true, tag: (i, n) => (i === n - 1 ? { cls: 'rel', text: 'ARR' } : { cls: '', text: i + 1 }), defName: (i, n) => (i === n - 1 ? 'ARR' : 'BACK' + (i + 1)), onChange: () => M.touch() });
+    const mine = [M.sout, M.sback];
+    M.editors.push(M.sout, M.sback);
+    const base = M.activeEditors || (() => M.editors);
+    M.activeEditors = () => base().filter(e => mine.indexOf(e) < 0).concat(on() ? mine : []);
+    const dg = M.defaultGeo; M.defaultGeo = function () { dg.apply(M, arguments); M.sout.set([DEP0], true); M.sback.set([DEP0].map(p => Object.assign({}, p, { name: 'ARR' })), true); };
+    const show = r => !!r.sOn, sync = () => { if (typeof App !== 'undefined') App.syncEditors(M); };
+    M.sections.push({ t: 'Full sortie · take-off → landing', open: false, fields: [
+      { k: 'sOn', l: 'Plan the whole sortie: take-off → ' + NAME[M.id] + ' rounds → landing', t: 'chk', v: false, wide: true, onset: sync },
+      { k: 'sEtd', l: 'Take-off time', t: 'time', v: '08:00', show },
+      { k: 'sTas', l: 'Cruise TAS (your decision)', u: 'kt', v: 125, min: 40, max: 400, hint: 'to and from the task area · wind from the Navigation tab', show },
+      { k: 'sKt', l: 'Speed in the task', u: 'kt', v: 100, min: 40, max: 400, hint: 'round time = distance ÷ speed', show },
+      { k: 'sRounds', l: 'Rounds of the task in this flight', v: 1, min: 1, max: 20, step: 1, show },
+      { k: 'sRoundNm', l: 'Distance of one round', u: 'NM', v: 0, min: 0, max: 500, hint: '0 = length IP/entry → target/exit', show },
+      { k: 'sRoundMin', l: 'Time of one round', u: 'min', v: 0, min: 0, max: 600, hint: '0 = distance ÷ speed in the task', show },
+      { k: 'sRepo', l: 'Re-position between rounds', u: 'min', v: 3, min: 0, max: 120, show },
+      { k: 'sFf', l: 'Fuel flow in the task', u: 'kg/h', v: 0, min: 0, max: 3000, hint: '0 = the W&B fuel plan task flow', show }],
+      note: 'The tab above plans the task area only. Tick this to add the whole sortie: place the <b>take-off airfield</b> (+ points on the way) and the <b>landing airfield</b> (+ points on the way back) on the map. <b>Time</b> = distance ÷ ground speed (your TAS and the Navigation tab wind). <b>Fuel</b> comes from the Weight &amp; Balance <b>Fuel plan</b> (climb, NM per gallon, fuel flows from the T.O. charts at your loading): taxi, climb, cruise, every round, return, approach, reserve, BINGO and a JOKER per round.' });
+    const orig = M.compute;
+    M.compute = function (v) {
+      let r = orig.call(M, v);
+      if (!v.sOn) return r;
+      r = Object.assign({}, r);
+      if (r.empty) { r.msgs = [MSG('i', r.empty)].concat(r.msgs || []); r.empty = null; r.fc = r.fc || EMPTY_FC(); }
+      r.msgs = (r.msgs || []).slice(); r.tables = (r.tables || []).slice(); r.kpis = (r.kpis || []).slice();
+      const fc = r.fc ? { type: 'FeatureCollection', features: r.fc.features.slice() } : EMPTY_FC(); r.fc = fc;
+      const ar = (AREA[M.id] || (() => [null, null]))(M), entry = ar[0], exit = ar[1] || ar[0];
+      if (!entry) { r.msgs.push(MSG('w', '<b>Full sortie:</b> place the task area on the map first (the points of this tab).')); return r; }
+      if (!M.sout.pts.length || !M.sback.pts.length) { r.msgs.push(MSG('w', '<b>Full sortie:</b> place the take-off and the landing airfield on the map.')); return r; }
+      const nv = (Store.data.v && Store.data.v.nav) || {}, wd = num(nv.wd), ws = num(nv.ws), etd = v.sEtd;
+      let WB = null; try { if (typeof WBUI !== 'undefined') { WB = WBUI.lastFuel(); if (!WB || !WB.P) WB = (WBUI.briefData() || {}).fuel || null; } } catch (e) { WB = null; }
+      const o = { out: ptsOf(M.sout), back: ptsOf(M.sback), entry, exit, tas: v.sTas, wd: fin(wd) ? wd : 0, ws: fin(ws) ? ws : 0, varE: num(nv.varE) || 0, etdMin: fin(etd) ? etd : 480, taskKt: v.sKt, rounds: v.sRounds, roundMin: v.sRoundMin, roundNm: v.sRoundNm, repoMin: v.sRepo, taskFfLb: v.sFf > 0 ? v.sFf * KG2LB : 0, fuelO: WB && WB.o && WB.P ? WB.o : null };
+      const S = plan(o);
+      const outC = [].concat(M.sout.coords(), [entry]), backC = [].concat([exit], M.sback.coords());
+      fc.features.push(F.line(outC, { name: 'Full sortie · out', stroke: '#3aa0ff', dash: '8 6', folder: 'Full sortie' }), F.line(backC, { name: 'Full sortie · back', stroke: '#a56bff', dash: '8 6', folder: 'Full sortie' }));
+      if (!S.ok) { r.msgs.push(MSG('e', '<b>Full sortie:</b> ' + S.reason)); return r; }
+      S.warn.forEach(w => r.msgs.push(MSG('w', '<b>Full sortie:</b> ' + w)));
+      if (!S.hasFuel) r.msgs.push(MSG('w', '<b>Full sortie:</b> times only — fill in the <b>Fuel plan</b> in the Weight &amp; Balance tab (climb, cruise NM per gallon, fuel flows) to get the fuel, BINGO and JOKER of the whole flight.'));
+      if (S.rSrc === 'default') r.msgs.push(MSG('i', '<b>Full sortie:</b> one round is only ' + nm1(S.rNm) + ' NM long — 10 min per round assumed; type the time of one round for your own figure.'));
+      const P = S.fuel, K = [];
+      K.push({ k: 'Flight time', v: dur(S.totMin) }, { k: 'Take-off → landing', v: hm(o.etdMin) + ' → ' + hm(S.landing) }, { k: 'Distance flown', v: nm1(S.totNm), u: 'NM' }, { k: 'Rounds', v: String(S.rounds), u: S.rSrc === 'typed' ? 'of ' + Math.round(S.rMin) + ' min' : 'of ' + Math.round(S.rMin) + ' min · ' + nm1(S.rNm) + ' NM' });
+      if (P) {
+        K.push({ k: 'Fuel for the flight', v: kg(P.tripNoAlt), u: 'kg' }, { k: 'Reserve', v: kg(P.res), u: 'kg' }, { k: 'Required', v: kg(P.required), u: 'kg' }, { k: 'On board', v: kg(P.onBoard), u: 'kg' },
+          { k: 'Margin', v: kg(P.margin), u: 'kg', cls: P.ok ? 'good' : 'bad' }, { k: 'BINGO', v: kg(P.bingo), u: 'kg' });
+        r.msgs.push(P.ok ? MSG('i', '<b>Full sortie:</b> fuel is enough — ' + kg(P.margin) + ' kg above the requirement (' + P.resTxt + ').') : MSG('e', '<b>Full sortie:</b> fuel is NOT enough — ' + kg(-P.margin) + ' kg short. Fewer rounds, a shorter route or more fuel (W&B tab).'));
+      }
+      r.kpis = K.concat(r.kpis);
+      r.tables.unshift({ title: 'Full sortie · take-off to landing' + (P ? '' : ' (times only)'), cols: [{ h: 'SEGMENT', k: 'n' }, { h: 'NM', k: 'nm' }, { h: 'TIME', k: 't' }, { h: 'AT', k: 'at' }].concat(P ? [{ h: 'FUEL kg', k: 'f' }, { h: 'LEFT kg', k: 'l' }] : []),
+        rows: S.rows.map(q => ({ n: q.n, nm: fin(q.nm) ? nm1(q.nm) : '', t: fin(q.min) ? dur(q.min) : '', at: q.at || '', f: fin(q.fuel) ? kg(q.fuel) : '', l: fin(q.left) ? kg(q.left) : '', _c: q.k === 'task' ? { n: 'c-cyan' } : null })),
+        foot: { n: 'TOTAL', nm: nm1(S.totNm), t: dur(S.totMin), at: hm(S.landing), f: P ? kg(P.tripNoAlt) : '', l: P ? kg(P.onBoard - P.tripNoAlt) : '' } });
+      if (P && P.tasks && P.tasks.length) r.tables.splice(1, 0, { title: 'Full sortie · fuel at each round (BINGO / JOKER)', cols: [{ h: 'ROUND', k: 'n' }, { h: 'FUEL ON ARRIVAL kg', k: 'a' }, { h: 'JOKER kg', k: 'j' }, { h: 'BINGO kg', k: 'b' }, { h: 'MIN TO JOKER', k: 'tj' }],
+        rows: P.tasks.map((t, i) => ({ n: 'Round ' + (i + 1), a: kg(t.arrive), j: kg(t.joker), b: kg(t.bingo), tj: fin(t.tJoker) ? String(Math.round(t.tJoker)) : '—', _c: { a: t.arrive >= t.joker ? 'c-green' : 'c-red' } })) });
+      M.sortie = S; return r;
+    };
+  }
+  ['photo', 'bcast', 'tact', 'banner', 'rain', 'leaf', 'supply'].forEach(id => { if (typeof MODS !== 'undefined' && MODS[id]) attach(MODS[id]); });
+  return { plan, attach, AREA, parseHM, hm };
+})();
+
+;
+/* ==========================================================================
    APP — part 2c: module 7 · Interactive Courseware & Flight Manual
    Full-screen split-screen workspace (no map). Left: manual text + clickable checklists.
    Right: interactive SVG system schematics (fuel / electrical), Emergency Boldface flashcards and a memory-item quiz.
@@ -33626,7 +33786,7 @@ const App = (function () {
       <ul><li><b>Module 11 · Weight &amp; Balance</b> (second tab, key <code>W</code>) is a full-screen calculator that works as the flight manual does: moment = weight × arm, C.G. arm = Σ moment ÷ Σ weight, % MAC = (arm − 118.11) ÷ 74.803 × 100, checked against the Figure 4-1 envelope and the 6,100 lb limit for the zero-fuel, ramp, take-off and landing conditions (fuel burn-off drawn on the chart). It also checks the Figure 4-2 station loading (350 / 575 / 600 / 575 / 350 lb, 700 lb per wing, two stores on one wing and none on the other prohibited), uses the §I weights (basic empty, crew 200 lb, oil 12 lb, fuel 1,060 lb at 6.5 lb/gal) and the Figure 6-1 store weights. <b>The arms of the seats, tanks, cabin and pylons are not in the T.O.</b>: the pre-filled arms are marked training placeholders — enter the arms and the weighed basic weight from the aircraft's own record. Two more views in the same tab: <b>Fuel · BINGO · JOKER</b> (RTAF ข้อ ๑๙ and T.O. §VI) and <b>T.O. Charts</b> — the performance graphs of T.O. Figs 6-7 to 6-16 (climb, long range cruise 96 % / 90 % RPM, loiter) shown as the <b>original scans</b> with only the reading lines drawn over them (nothing is redrawn; zoom, pan and drag to set the weight), a look-up by weight / altitude / drag index, the drag index from the stores (Fig 6-1), and a button to send the reading to the fuel plan. Readings are estimates (typically within 1–2 % of the T.O. sample mission, 3 % at worst): the printed T.O. remains the authority.</li></ul>
       <ul><li><b>Module 1 · Navigation extras</b> (under the NavLog, each panel folded until opened): <b>Terrain under the route</b> reads the ground height along the route from an online elevation service (button, internet needed; the route coordinates are sent to open-meteo.com, or open-elevation.com if that fails), draws it with the planned altitude, marks where the plan is below ground + 1,000 ft (2,000 ft in mountains) and can fill <i>Highest terrain</i> and <i>Terrain by leg</i> for you. <b>Plan file</b> saves the route and every setting to a small .json file and opens it again. <b>Debrief</b> loads a flown track (GPX, KML or CSV) and compares it with the plan: cross-track error, altitude against the profile, time over each waypoint, the track shown on the map (the file stays on the device). <b>3D view</b> shows the terrain strip, the planned path and the flown track with stretched heights. <b>Live layers</b> are links to ADS-B Exchange, NASA FIRMS and Windy opened at the middle of the route. Ground model 90 m, no obstacles — planning and training aid only. Each waypoint between the first and the last has an <b>ALT ft</b> cell: type the planned altitude over that point and the profile (climb, level, descent, TOC / TOD, fuel, time) follows the typed altitudes instead of the cruise altitude; empty cells are free points. In the courseware every checklist has a <b>Read aloud</b> button (the device's own voice).</li></ul>
       <ul><li><b>Module 13 · Mission Card</b> (next to the Briefing, key <code>M</code>) makes the squadron's two-sided <i>Mission Card</i> and a <i>Minimap</i> for printing on A4: two A5 cards side by side on a landscape A4 (left = aircraft 1, right = aircraft 2, or a copy of aircraft 1), a dashed cut line down the middle and a circle with tick marks at the middle of each card's edge as a guide for the hole punch (Checklist binder). Everything is pulled from the plan — call sign, area, IFF and mission from the Briefing, take-off time from Navigation (STEP → START → TAXI → TAKEOFF 10 minutes apart), fuel / BINGO / JOKER and weights, % MAC, C.G., stall, rotation and take-off / landing distances from Weight &amp; Balance (live only for the aircraft loaded there), airfields from ICAO codes in the route — and every field can be typed over (typed values win). Minimap: route points from Navigation or typed, Esri satellite / topo / street (internet needed) or a drawn map, course and distance on every leg, range rings, a data box for each airfield from the AIP directory (drag to move), custom boxes such as OSCAR / FOCAL, printed two per A4 portrait with a cut line (the map is turned 90° to fill a card when the route runs north–south). Only airfields whose coordinates the app knows (squadron KML, seeds, your own points) are placed automatically; for others type lat / lon. Stall speed uses the selected flap setting; fuel is shown in the chosen unit.</li></ul>
-      <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: <b>tick</b> what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), one or <b>several</b> mission items of the same flight (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide — then choose <i>Slides</i> (the slide editor) or <i>Document</i> (the guide outline); the Briefing tab always opens on this mission pick, and the <i>← Pick mission</i> button on both work pages returns to it (ticks are kept). In the document: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. Slide <b>5.3 Bird and other wild life</b> is a picture slide: the pilot opens the RTAF Bird Map, crops the picture, then drags it into the drop box in the editor (or clicks to choose the file, or pastes with Ctrl+V; up to 4 pictures) and the slide shows the heading and the pictures as large as it can — nothing is pulled from the website. In the slide editor, slides 6.1 / 6.2 (Mission Card briefing) pull first from the <b>Mission Card</b> tab (call sign, aircraft, crew, area, IFF, STEP / START / TAXI / take-off times, landing / log, fuel, JOKER / BINGO), then from Navigation / W&amp;B; what you type in the slide wins. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
+      <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: <b>tick</b> what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), one or <b>several</b> mission items of the same flight (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide — then choose <i>Slides</i> (the slide editor) or <i>Document</i> (the guide outline); the Briefing tab always opens on this mission pick, and the <i>← Pick mission</i> button on both work pages returns to it (ticks are kept). In the document: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. The seven mission tabs (photo / recon, loud speaker, towing, rain making, leaflet, aerial supply, tactical) each have a <b>Full sortie · take-off → landing</b> section: tick it, place the take-off airfield and the landing airfield (with points on the way) on the map, and give the cruise TAS you decide, the number of rounds of the task and the time or distance of one round. Time = distance ÷ ground speed (the Navigation tab wind); fuel, reserve, BINGO and a JOKER per round come from the Weight &amp; Balance Fuel plan (read from the T.O. charts), so fill that in first — without it only the times are shown. Slide <b>5.3 Bird and other wild life</b> is a picture slide: the pilot opens the RTAF Bird Map, crops the picture, then drags it into the drop box in the editor (or clicks to choose the file, or pastes with Ctrl+V; up to 4 pictures) and the slide shows the heading and the pictures as large as it can — nothing is pulled from the website. In the slide editor, slides 6.1 / 6.2 (Mission Card briefing) pull first from the <b>Mission Card</b> tab (call sign, aircraft, crew, area, IFF, STEP / START / TAXI / take-off times, landing / log, fuel, JOKER / BINGO), then from Navigation / W&amp;B; what you type in the slide wins. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
       <ul><li><b>Module 2 · photo reconnaissance</b> follows the squadron's <b>Photo Reconnaissance Procedures</b> (501 Sqn Phase Manual, 2024). Choose the mission type: <i>AP</i> survey lines (vertical camera, NIKON D750 / H4D presets), <i>FLIR known target</i> (IP at 8 NM, straight run, right orbit about the target, range calls 8 … 2 NM), <i>FLIR moving target</i> (parallel pass, turn toward the target when the camera azimuth passes 135°, printed limits range 2,000-7,000 m and depression 10-40°) or a <i>search pattern</i> (rectangular parallel / creeping, sector, expanding square). Study it in Module 7 (chapter <i>Photo recon</i>: display data, preparation, crew calls, patterns, HIPP / F3EA, tracking, abnormal procedures) and practise with the <i>Phase drill</i> tab (crew calls and the printed limits).</li></ul>
       <ul><li><b>Modules 3 and 5 · Loud speaker and Towering</b> follow the squadron SOP <i>Loud Speaker / Towering</i>. Module 3 opens in the <i>orbit</i> mode: 60-100 KIAS, 700-1000 ft AGL, 90-92 % RPM, 20-30° bank, 3 km² per orbit, wind correction and the terrain case, with warnings outside every printed band. Module 5 uses the SOP speeds and heights (70-90 kt, flypast 300-500 ft, release 100-200 ft, ropes 30 m + 7.3 m). Study both in Module 7 (chapters <i>Loud speaker</i> and <i>Towering</i>). Items the SOP leaves open (speaker side, speaker range, tow drag, bank limit, release-area coordinates) are labelled assumptions.</li>
       <li><b>Module 6 · Rain making</b> follows the Phase Manual <i>Rain making</i> and <i>Hygroscopic flare</i> sections. Three modes: <i>Powder run</i> (formation with an 8 s take-off interval, wingmen upwind and the leader downwind, 100 KIAS, release in the order of the numbers, weight and balance with the powder next to the pilot\'s seat, minimum safe altitude); <i>Hygroscopic flare attack</i> (figure-8 or back-and-forth line under the cloud base, 90-100 KIAS, 30-35 psi, up to 24 flares of 5 minutes each, 1 kg ≙ 150 kg of powder, firing schedule and particle drift into the cloud); and <i>Return</i> (straight-in landing: join 5 NM, flaps 74 %, 70 KIAS, 700 fpm, separation at 3 NM). Study it in Module 7 (chapters <i>Rain making</i> and <i>Hygroscopic flare</i>). The manual gives no wingman separation, flare interval, bank, seeding formula or height at 5 NM — those are labelled assumptions.</li></ul>
