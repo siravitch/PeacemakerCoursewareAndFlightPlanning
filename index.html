@@ -2757,6 +2757,16 @@ li.say .cw-it{background:#3dd6f51f;outline:1px solid var(--cyan);outline-offset:
 .brf-card{position:relative;flex-direction:row!important;align-items:flex-start;gap:9px!important}.brf-card input{margin-top:3px;width:17px;height:17px;flex:none;accent-color:#ffb020;cursor:pointer}.brf-ct{display:flex;flex-direction:column;gap:2px;min-width:0}
 .brf-bar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#0b1117f2;border:1px solid #ffb02088;border-radius:12px;padding:9px 12px;font-size:12.5px;z-index:2}.brf-bar b{color:var(--amber)}
 .brf-bar-go{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}.brf-bar-l{color:var(--mute);font-size:12px}
+/* 5.3 bird & wildlife: pictures dropped by the pilot, shown as large as the slide allows */
+.brs-body.bird.bpic{top:160px;left:50px;right:50px;bottom:56px;display:flex;flex-direction:column;gap:8px;line-height:1.35}
+.brs-bigpics{flex:1;min-height:0;display:grid;gap:10px;grid-template-columns:1fr;grid-auto-rows:1fr}
+.brs-bigpics.n2{grid-template-columns:1fr 1fr}.brs-bigpics.n3{grid-template-columns:1fr 1fr 1fr}.brs-bigpics.n4{grid-template-columns:1fr 1fr}
+.brs-bigpics img{width:100%;height:100%;min-width:0;min-height:0;object-fit:contain;border:1px solid #c8d3de;border-radius:4px;background:#fff}
+.brs-bnote{font-size:20px;color:#0b1624}
+.brs-dz-w{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.brs-dz{border:2px dashed var(--line2);border-radius:10px;padding:22px 12px;text-align:center;cursor:pointer;background:rgba(127,127,127,.06);outline:none;transition:background .15s,border-color .15s}
+.brs-dz:hover,.brs-dz:focus,.brs-dz.over{border-color:#2e86de;background:rgba(46,134,222,.12)}
+.brs-dz-i{font-size:28px;line-height:1}.brs-dz-t{font-weight:700;margin-top:4px}.brs-dz-s{font-size:12px;opacity:.75;margin-top:2px}
 
 </style>
 </head>
@@ -30765,113 +30775,44 @@ const BRIEF_SLIDES = function (C) {
       field('หมายเหตุใต้กราฟ (บรรทัดละข้อ)', ta(S.txt.ovw || '', v => { S.txt.ovw = v; }, '', rd)),
       E('brs-fine', 'p', 'ใต้กราฟแสดงสรุปเส้นทางจากแท็บ Navigation อัตโนมัติ (ถ้ามี)'));
   }
-  /* ---- 5.3 bird & wildlife : table + map of the RTAF Bird Map (birdmap.rtaf.mi.th), live pull or pasted ---- */
-  const BIRD_API = 'https://birdmap.rtaf.mi.th/api/';
-  const RISKS = [['STOP & ALERT', '#dc2f2f'], ['RAPID RESPONSE', '#f26a1b'], ['DETER & OBSERVE', '#f2b624']];
+  /* ---- 5.3 bird & wildlife : the pilot crops the picture (e.g. the RTAF Bird Map screen) and drops it here; the slide shows the heading and the pictures as large as the slide allows ---- */
   const THM = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'], THD = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-  const bird = () => S.bird || (S.bird = { unit: 'กองบิน 5', days: 7, rows: [], at: 0, src: '', lat: null, lon: null });
-  let birdMsg = '';
-  const normRisk = x => { const u = String(x || '').toUpperCase().replace(/\s+/g, ' ').replace(/\s*&\s*/g, ' & '); return (RISKS.find(r => u.indexOf(r[0]) >= 0) || [''])[0]; };
-  const riskCol = r => (RISKS.find(x => x[0] === r) || [0, '#8a97a5'])[1];
-  const hueRisk = c => {                                          // risk name from a colour when the server sends only risk_color
-    let m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || '').trim()); if (!m) return '';
-    let x = m[1].length === 3 ? m[1].replace(/./g, q => q + q) : m[1]; const r = parseInt(x.slice(0, 2), 16) / 255, g = parseInt(x.slice(2, 4), 16) / 255, b = parseInt(x.slice(4), 16) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-    if (mx - mn < 0.2) return ''; let hu = mx === r ? ((g - b) / (mx - mn)) * 60 : mx === g ? (2 + (b - r) / (mx - mn)) * 60 : (4 + (r - g) / (mx - mn)) * 60; hu = (hu + 360) % 360;
-    return hu < 15 || hu > 345 ? RISKS[0][0] : hu < 40 ? RISKS[1][0] : hu < 70 ? RISKS[2][0] : '';
-  };
-  const bMs = r => Date.parse(r.t + ':00+07:00');                  // times of the site are Thailand local time
-  const fmtBird = r => { const ms = bMs(r), d = new Date(ms + 7 * 3600000); return THD[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + THM[d.getUTCMonth()] + String(d.getUTCFullYear() + 543).slice(2) + ' ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()); };
-  const birdRows = () => { const B = bird(), n = now(), lim = Math.floor((n + 7 * 3600000) / 86400000) * 86400000 - 7 * 3600000 - (+B.days || 7) * 86400000;   // whole Thai calendar days, like the site (day_past <= N)
-    return B.rows.filter(r => { const t = bMs(r); return fin(t) && t >= lim && t <= n + 86400000; }).sort((a, b) => bMs(b) - bMs(a)); };
-  const parseBirdTable = txt => {                                   // lines copied from the table of the site: "จ. 2 พ.ย.69 09:10  200  4 x 4  STOP & ALERT"
-    const mon = THM.map(m => m.replace(/\./g, '\\.')).join('|'), re = new RegExp('(\\d{1,2})\\s*(' + mon + ')\\s*(\\d{2,4})\\s+(\\d{1,2}):(\\d{2})\\s+(\\d+)\\s+(\\d)\\s*[x×X]\\s*(\\d+)[^A-Za-z\\d]*(STOP\\s*&\\s*ALERT|RAPID\\s*RESPONSE|DETER\\s*&\\s*OBSERVE)', 'i'), out = [];
-    String(txt).split(/\r?\n/).forEach(l => {
-      const m = re.exec(l.replace(/\s+/g, ' ')); if (!m) return; let y = +m[3]; if (y < 100) y += 2500; if (y > 2400) y -= 543;
-      out.push({ t: y + '-' + p2(THM.indexOf(m[2]) + 1) + '-' + p2(m[1]) + 'T' + p2(m[4]) + ':' + m[5], ft: +m[6], sz: +m[7], n: +m[8], risk: normRisk(m[9]) });
-    });
-    return out;
-  };
-  const arr = x => Array.isArray(x) ? x : (x && (x.results || x.data || x.items)) || [];
-  const birdFromJson = (data, units) => {                          // BirdData records of the site → rows of this slide (only this unit)
-    const L = arr(data), U = arr(units), uni = U.find(u => Object.values(u).some(v => typeof v === 'string' && /กองบิน\s*[5๕](\D|$)/.test(v)));
-    let how = 'ไม่ได้กรองตามกองบิน (ไม่มีรายชื่อหน่วย)', keep = () => true, lat = null, lon = null;
-    if (U.length && !uni) throw new Error('ไม่พบ “กองบิน 5” ในรายชื่อหน่วยของเว็บ');
-    if (uni) {
-      lat = +uni.latitude; lon = +(uni.longtitude != null ? uni.longtitude : uni.longitude);
-      const key = ['unit', 'unit_id', 'wing', 'wing_id', 'airfield', 'airfield_id', 'unit_no'].find(k => L[0] && L[0][k] != null);
-      if (key) { keep = r => String(r[key] && r[key].id != null ? r[key].id : r[key]) === String(uni.id); how = 'กรองด้วยฟิลด์ ' + key; }
-      else if (fin(lat) && fin(lon)) { keep = r => hav(lat, lon, +r.latitude, +r.longtitude) <= 8000; how = 'กรองตามระยะ ≤ 8 กม. จากสนาม (เว็บไม่ระบุกองบินในแต่ละรายการ)'; }
-    }
-    const rows = [];
-    L.forEach(r => {
-      if (!r || !r.date_found || !keep(r)) return;
-      const rk = ['risk', 'risk_name', 'risk_level', 'risk_text', 'risk_desc'].map(k => normRisk(r[k])).find(Boolean) || hueRisk(r.risk_color);
-      rows.push({ t: String(r.date_found).slice(0, 10) + 'T' + String(r.time_found || '00:00').slice(0, 5), ft: +(r.attitude != null ? r.attitude : r.altitude != null ? r.altitude : r.height) || 0, sz: +r.bird_size || 0, n: +r.num_bird || 0, risk: rk, c: typeof r.risk_color === 'string' ? r.risk_color : '', la: fin(+r.latitude) && r.latitude != null ? +r.latitude : null, lo: fin(+r.longtitude) && r.longtitude != null ? +r.longtitude : null });
-    });
-    return { rows, how, lat: fin(lat) ? lat : null, lon: fin(lon) ? lon : null };
-  };
-  const hav = (a, b, c, d) => { const R = 6371000, f = x => x * Math.PI / 180, dp = f(c - a), dl = f(d - b), q = Math.sin(dp / 2) ** 2 + Math.cos(f(a)) * Math.cos(f(c)) * Math.sin(dl / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(q)); };
-  async function birdFetch() {
-    const g = u => fetch(BIRD_API + u, { mode: 'cors', cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
-    const [d, u] = await Promise.all([g('BirdData/'), g('Unit/')]); return birdFromJson(d, u);
-  }
-  const birdMap = (rows, B) => {                                    // plan view (north up) of the sightings around the airfield, no tiles needed
-    const pts = rows.filter(r => r.la != null && r.lo != null); if (!pts.length) return null;
-    const la0 = B.lat != null ? B.lat : pts.reduce((a, r) => a + r.la, 0) / pts.length, lo0 = B.lon != null ? B.lon : pts.reduce((a, r) => a + r.lo, 0) / pts.length, kx = Math.cos(la0 * Math.PI / 180) * 111320, ky = 110540;
-    const xy = pts.map(r => [(r.lo - lo0) * kx, -(r.la - la0) * ky]), far = Math.max.apply(null, xy.map(q => Math.hypot(q[0], q[1])).concat(300)), steps = [500, 1000, 2000, 3000, 5000, 10000, 20000], R = steps.find(v => v >= far * 1.1) || Math.ceil(far * 1.1 / 1000) * 1000, W = 520, c = W / 2, k = (c - 24) / R, NS = 'http://www.w3.org/2000/svg';
-    const el = (t, a, tx) => { const e = document.createElementNS(NS, t); Object.keys(a || {}).forEach(q => e.setAttribute(q, a[q])); if (tx != null) e.textContent = tx; return e; };
-    const sv = el('svg', { viewBox: '0 0 ' + W + ' ' + W, class: 'brs-bmap', role: 'img', 'aria-label': 'แผนที่จุดพบนก' });
-    [1, 0.5].forEach(f => { sv.append(el('circle', { cx: c, cy: c, r: R * f * k, fill: 'none', stroke: '#b7c4d1', 'stroke-width': 1.5, 'stroke-dasharray': '5 5' })); sv.append(el('text', { x: c + R * f * k * 0.72 + 4, y: c - R * f * k * 0.72 - 2, 'font-size': 15, fill: '#4a5b6c' }, (R * f >= 1000 ? (R * f / 1000) + ' km' : (R * f) + ' m'))); });
-    sv.append(el('line', { x1: c, y1: 8, x2: c, y2: W - 8, stroke: '#d3dce5' }), el('line', { x1: 8, y1: c, x2: W - 8, y2: c, stroke: '#d3dce5' }), el('text', { x: c - 6, y: 20, 'font-size': 16, 'font-weight': 700, fill: '#26384a' }, 'N'));
-    xy.forEach((q, i) => sv.append(el('circle', { cx: c + q[0] * k, cy: c + q[1] * k, r: 9, fill: pts[i].c || riskCol(pts[i].risk), stroke: '#fff', 'stroke-width': 2, 'fill-opacity': .92 })));
-    sv.append(el('path', { d: 'M' + c + ' ' + (c - 15) + ' L' + (c + 11) + ' ' + (c + 9) + ' L' + c + ' ' + (c + 3) + ' L' + (c - 11) + ' ' + (c + 9) + ' Z', fill: '#1b78b8', stroke: '#fff', 'stroke-width': 2 }));
-    return sv;
-  };
+  const BIRD_MAX = 4;
+  const arr = x => Array.isArray(x) ? x : (x && (x.results || x.data || x.items)) || [];     // list from a JSON reply (used by the weather pull too)
   function drawBird(st, d) {
-    const B = bird(), rows = birdRows(), hid = B.rows.length - rows.length, notes = String(txtOf(d)).split('\n').slice(1).filter(l => l.trim()).join('\n'), pp = pics(d.id), mp = birdMap(rows, B);
-    const sum = RISKS.map(r => [r, rows.filter(x => x.risk === r[0]).length]).filter(q => q[1]);
-    const fm = ms => { const t = new Date(ms + 7 * 3600000); return t.getUTCDate() + ' ' + THM[t.getUTCMonth()] + ' ' + String(t.getUTCFullYear() + 543).slice(2) + ' ' + p2(t.getUTCHours()) + ':' + p2(t.getUTCMinutes()); };
-    const sub = (B.unit || '') + ' · ย้อนหลัง ' + (+B.days || 7) + ' วัน · ' + rows.length + ' รายการ' + (B.at ? ' · ข้อมูล ณ ' + fm(B.at) + (B.src === 'fetch' ? ' (ดึงจาก birdmap.rtaf.mi.th)' : B.src === 'paste' ? ' (ข้อมูลที่วางไว้)' : '') : '');
-    const tbl = rows.length ? E('brs-bt', 'table', [E('', 'thead', E('', 'tr', ['วันที่', 'ความสูง', 'ขนาด x จำนวน', 'ความเสี่ยง'].map(x => E('', 'th', x)))),
-      E('', 'tbody', rows.slice(0, 12).map(r => E('', 'tr', [E('', 'td', fmtBird(r)), E('', 'td', String(r.ft)), E('', 'td', r.sz + ' x ' + r.n), E('rk', 'td', [h('i', { class: 'dot', style: 'background:' + (r.c || riskCol(r.risk)) }), r.risk || '-'])])))]) : null;
-    const left = E('brs-col', 'div', [E('brs-bsub', 'div', sub), tbl || E('brs-empty', 'div', B.rows.length ? 'ไม่มีรายการในช่วงที่เลือก (ซ่อน ' + hid + ' รายการที่เก่ากว่า)' : 'ยังไม่มีข้อมูลนก — กด “ดึงจาก birdmap” หรือวางข้อมูลในช่องแก้ไข'),
-      rows.length > 12 ? E('brs-bsub', 'div', '… และอีก ' + (rows.length - 12) + ' รายการ') : null, sum.length ? E('brs-bsub', 'div', sum.map(q => [h('i', { class: 'dot', style: 'background:' + q[0][1] }), q[0][0] + ' ' + q[1] + '   ']).flat()) : null, notes ? textBlocks(notes) : null]);
-    const right = mp ? E('brs-col brs-bmc', 'div', mp) : pp;
-    const body = E('brs-body', 'div'); body.append(right ? split(left, right) : left);
-    st.append(head(d.no, d.title), E('brs-bh', 'div', '5.3 BIRD AND OTHER WILD LIFE CONDITION'), body); body.classList.add('bird');
+    const L = imgs(d.id), notes = String(txtOf(d)).split('\n').slice(1).filter(l => l.trim()).join('\n');
+    const body = E('brs-body bird bpic', 'div');
+    if (L.length) body.append(E('brs-bigpics n' + Math.min(L.length, BIRD_MAX), 'div', L.slice(0, BIRD_MAX).map(u => h('img', { src: u, alt: '' }))));
+    else body.append(E('brs-empty big', 'div', 'ยังไม่มีรูป — ลากรูปที่ crop จากเว็บ Bird Map มาวางในช่องแก้ไข หรือคลิกเลือกไฟล์'));
+    if (notes) body.append(E('brs-bnote', 'div', notes.split('\n').map(l => E('', 'div', l.trim()))));
+    st.append(head(d.no, d.title), E('brs-bh', 'div', '5.3 BIRD AND OTHER WILD LIFE CONDITION'), body);
+  }
+  function dropPics(k, rd, max, hint) {                            // drag-and-drop box (also click to choose, and Ctrl+V of a copied picture)
+    const wrap = E('brs-dz-w', 'div'), box = E('brs-dz', 'div'), row = E('brs-thumbs'), msg = E('brs-fine', 'p', '');
+    box.tabIndex = 0; box.setAttribute('role', 'button'); box.setAttribute('aria-label', 'วางรูปที่นี่');
+    const draw = () => {
+      row.replaceChildren(); imgs(k).forEach((u, i) => row.append(E('brs-th', 'div', [h('img', { src: u, alt: '' }), h('button', { type: 'button', 'aria-label': 'ลบรูป', onclick: () => { imgs(k).splice(i, 1); save(); draw(); rd(); } }, '✕')])));
+      box.replaceChildren(E('brs-dz-i', 'div', '⬇'), E('brs-dz-t', 'div', 'ลากรูปมาวางที่นี่ (Drop here)'), E('brs-dz-s', 'div', 'หรือคลิกเพื่อเลือกไฟล์ · หรือกด Ctrl+V วางรูปที่ก๊อปไว้ · ได้สูงสุด ' + max + ' รูป (' + imgs(k).length + '/' + max + ')'));
+    };
+    const add = files => {
+      const L = [].slice.call(files || []).filter(f => /^image\//.test(f.type)), room = max - imgs(k).length;
+      if (!L.length) { msg.textContent = 'ไม่พบไฟล์รูปภาพ (รองรับ JPG / PNG / WebP ฯลฯ)'; return; }
+      const use = L.slice(0, Math.max(0, room)); msg.textContent = L.length > use.length ? 'ใส่ได้อีก ' + room + ' รูป — ข้ามอีก ' + (L.length - use.length) + ' รูป (ลบรูปเดิมก่อนถ้าต้องการเพิ่ม)' : '';
+      let n = use.length; if (!n) return; use.forEach(fl => readImg(fl, u => { imgs(k).push(u); if (--n === 0) { save(); draw(); rd(); } }));
+    };
+    const f = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, onchange: ev => { add(ev.target.files); ev.target.value = ''; } });
+    box.addEventListener('click', () => f.click());
+    box.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); f.click(); } });
+    box.addEventListener('paste', ev => { const fs = [].slice.call((ev.clipboardData && ev.clipboardData.files) || []); if (fs.length) { ev.preventDefault(); add(fs); } });
+    ['dragenter', 'dragover'].forEach(t => box.addEventListener(t, ev => { ev.preventDefault(); box.classList.add('over'); }));
+    ['dragleave', 'dragend'].forEach(t => box.addEventListener(t, () => box.classList.remove('over')));
+    box.addEventListener('drop', ev => { ev.preventDefault(); box.classList.remove('over'); add(ev.dataTransfer && ev.dataTransfer.files); });
+    draw(); wrap.append(E('brs-fl', 'span', hint || 'รูปภาพ'), box, f, msg, row); return wrap;
   }
   function edBird(p, d, rd) {
-    const B = bird(), ta2 = nokeys(h('textarea', { class: 'brs-in', rows: 5, placeholder: 'วางตารางที่ก๊อปจากเว็บ (วันที่ ความสูง ขนาด x จำนวน ความเสี่ยง) หรือข้อความ JSON จาก /api/BirdData/' })), msg = E('brs-fine bird-msg', 'p', birdMsg);
-    const say = t => { birdMsg = t; msg.textContent = t; };
-    const sel = h('select', { class: 'brs-in sm', 'aria-label': 'ช่วงเวลา', onchange: ev => { B.days = +ev.target.value; save(); rd(); } }, [3, 7, 14, 30].map(n => h('option', { value: n, selected: (+B.days || 7) === n ? true : null }, n === 14 ? '2 สัปดาห์' : n === 30 ? '1 เดือน' : n + ' วัน')));
-    const fetchBtn = h('button', { type: 'button', class: 'btn sm', 'data-bird': 'fetch', onclick: async () => {
-      fetchBtn.disabled = true; say('กำลังดึงข้อมูลจาก birdmap.rtaf.mi.th …');
-      try { const r = await birdFetch(); B.rows = r.rows; B.at = now(); B.src = 'fetch'; B.lat = r.lat; B.lon = r.lon; save(); say('ดึงแล้ว ' + r.rows.length + ' รายการ · ' + r.how); rd(true); }
-      catch (e) { say('ดึงไม่ได้ (' + (e && e.message || e) + ') — เว็บ birdmap อาจไม่อนุญาตให้เว็บอื่นเรียกข้อมูล (CORS) หรือเครือข่ายนี้เข้าไม่ถึง: เปิด https://birdmap.rtaf.mi.th/api/BirdData/ ในเบราว์เซอร์ แล้วก๊อปข้อความทั้งหมดมาวางในช่องด้านล่าง หรือก๊อปตารางจากหน้าเว็บ'); fetchBtn.disabled = false; }
-    } }, '⇩ ดึงจาก birdmap.rtaf.mi.th');
-    const impBtn = h('button', { type: 'button', class: 'btn sm', 'data-bird': 'import', onclick: () => {
-      const t = ta2.value.trim(); if (!t) { say('ยังไม่ได้วางข้อมูล'); return; }
-      let rows = null, how = '', lat = null, lon = null;
-      try { const j = JSON.parse(t); const r = birdFromJson(j.birds || j.BirdData || j, j.units || j.Unit || null); rows = r.rows; how = r.how; lat = r.lat; lon = r.lon; } catch (e) { if (!(e instanceof SyntaxError)) { say('นำเข้าไม่ได้: ' + e.message); return; } }
-      if (!rows) { rows = parseBirdTable(t); how = 'จากตารางที่วาง (ไม่มีพิกัด จึงไม่มีแผนที่ — แนบภาพแผนที่ด้านล่างได้)'; }
-      if (!rows.length) { say('ไม่พบรายการที่อ่านได้ — ต้องเป็นแถวแบบ “จ. 2 พ.ย.69 09:10 200 4 x 4 STOP & ALERT” หรือ JSON ของ /api/BirdData/'); return; }
-      B.rows = rows; B.at = now(); B.src = 'paste'; B.lat = lat; B.lon = lon; save(); say('นำเข้า ' + rows.length + ' รายการ · ' + how); rd(true);
-    } }, 'นำเข้าข้อมูลที่วาง');
-    const box = E('brs-rows');
-    B.rows.forEach((r, i) => box.append(E('brs-brow', 'div', [
-      nokeys(h('input', { type: 'datetime-local', class: 'brs-in sm', value: r.t, 'aria-label': 'วันเวลา', oninput: ev => { if (ev.target.value) { r.t = ev.target.value.slice(0, 16); save(); rd(); } } })),
-      nokeys(h('input', { type: 'number', class: 'brs-in sm', value: r.ft, 'aria-label': 'ความสูง ft', oninput: ev => { r.ft = +ev.target.value || 0; save(); rd(); } })),
-      nokeys(h('input', { type: 'number', min: 1, max: 5, class: 'brs-in sm', value: r.sz, 'aria-label': 'ขนาด', oninput: ev => { r.sz = +ev.target.value || 0; save(); rd(); } })),
-      nokeys(h('input', { type: 'number', min: 1, max: 5, class: 'brs-in sm', value: r.n, 'aria-label': 'จำนวน', oninput: ev => { r.n = +ev.target.value || 0; save(); rd(); } })),
-      h('select', { class: 'brs-in sm', 'aria-label': 'ความเสี่ยง', onchange: ev => { r.risk = ev.target.value; delete r.c; save(); rd(); } }, [''].concat(RISKS.map(x => x[0])).map(x => h('option', { value: x, selected: r.risk === x ? true : null }, x || '—'))),
-      h('button', { type: 'button', class: 'btn sm', 'aria-label': 'ลบแถว', onclick: () => { B.rows.splice(i, 1); save(); rd(true); } }, '✕')])));
-    p.append(E('brs-fine', 'p', '5.3 ข้อมูลนก/สัตว์ป่าจากระบบ RTAF Bird Map (ตาราง วันที่ · ความสูง ft · ขนาด x จำนวน · ความเสี่ยง และแผนที่จุดพบนก) — ขนาด 1–5 และจำนวน 1–5 ตามรหัสของเว็บ; ความเสี่ยงตามที่เว็บคำนวณ ไม่ได้คำนวณในแอปนี้'),
-      field('สนามบิน / หน่วย', inp(B.unit, v => { B.unit = v; }, 'กองบิน 5')), field('ช่วงเวลาย้อนหลัง (นับจากเวลาปัจจุบัน)', sel),
-      E('brs-btns', 'div', [fetchBtn, h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { B.rows = []; B.at = 0; B.src = ''; save(); say('ล้างข้อมูลแล้ว'); rd(true); } }, 'ล้างข้อมูลนก')]), msg,
-      field('วางข้อมูล (ตารางจากเว็บ หรือ JSON)', ta2), E('brs-btns', 'div', impBtn),
-      E('brs-fine', 'p', 'รายการ (' + B.rows.length + ') — แก้ไข / ลบ / เพิ่มได้'), box,
-      h('button', { type: 'button', class: 'btn sm', onclick: () => { const n = new Date(now() + 7 * 3600000); B.rows.push({ t: n.getUTCFullYear() + '-' + p2(n.getUTCMonth() + 1) + '-' + p2(n.getUTCDate()) + 'T' + p2(n.getUTCHours()) + ':' + p2(n.getUTCMinutes()), ft: 0, sz: 1, n: 1, risk: '' }); B.at = B.at || now(); B.src = B.src || 'paste'; save(); rd(true); } }, '＋ เพิ่มแถว'),
-      field('หมายเหตุใต้ตาราง (บรรทัดแรกคือหัวข้อ 5.3 — ข้อความที่พิมพ์ต่อจากบรรทัดแรกจะแสดงใต้ตาราง เช่น สัตว์ป่าอื่น)', ta(txtOf(d), v => { S.txt[d.id] = v; }, '', rd, 3)), picsEd(d.id, rd, 'ภาพหน้าจอแผนที่จาก birdmap (ใช้เมื่อข้อมูลไม่มีพิกัด)'));
+    p.append(E('brs-fine', 'p', '5.3 สภาพนกและสัตว์ป่า — ให้นักบินเข้าเว็บ RTAF Bird Map (birdmap.rtaf.mi.th) แล้ว crop ภาพแผนที่ / ตารางที่ต้องการ จากนั้นลากไฟล์มาวางในกล่องด้านล่าง ระบบจะแสดงหัวข้อและขยายรูปให้ใหญ่ที่สุดบนสไลด์ (ไม่ดึงข้อมูลอัตโนมัติ)'),
+      dropPics(d.id, rd, BIRD_MAX, 'รูป Bird Map / สภาพนกและสัตว์ป่า'),
+      field('หมายเหตุใต้รูป (ไม่บังคับ — บรรทัดแรกคือหัวข้อ 5.3 ข้อความที่พิมพ์ต่อจากบรรทัดแรกจะแสดงใต้รูป)', ta(txtOf(d), v => { S.txt[d.id] = v; }, '', rd, 4)));
   }
   /* ---- 5.4 weather : METAR / TAF of the stations the pilot picks, pulled from the RTAF weather site (weather.rtaf.mi.th) ---- */
   const WX_API = 'https://weather.rtaf.mi.th/api/v1/';
@@ -33685,7 +33626,7 @@ const App = (function () {
       <ul><li><b>Module 11 · Weight &amp; Balance</b> (second tab, key <code>W</code>) is a full-screen calculator that works as the flight manual does: moment = weight × arm, C.G. arm = Σ moment ÷ Σ weight, % MAC = (arm − 118.11) ÷ 74.803 × 100, checked against the Figure 4-1 envelope and the 6,100 lb limit for the zero-fuel, ramp, take-off and landing conditions (fuel burn-off drawn on the chart). It also checks the Figure 4-2 station loading (350 / 575 / 600 / 575 / 350 lb, 700 lb per wing, two stores on one wing and none on the other prohibited), uses the §I weights (basic empty, crew 200 lb, oil 12 lb, fuel 1,060 lb at 6.5 lb/gal) and the Figure 6-1 store weights. <b>The arms of the seats, tanks, cabin and pylons are not in the T.O.</b>: the pre-filled arms are marked training placeholders — enter the arms and the weighed basic weight from the aircraft's own record. Two more views in the same tab: <b>Fuel · BINGO · JOKER</b> (RTAF ข้อ ๑๙ and T.O. §VI) and <b>T.O. Charts</b> — the performance graphs of T.O. Figs 6-7 to 6-16 (climb, long range cruise 96 % / 90 % RPM, loiter) shown as the <b>original scans</b> with only the reading lines drawn over them (nothing is redrawn; zoom, pan and drag to set the weight), a look-up by weight / altitude / drag index, the drag index from the stores (Fig 6-1), and a button to send the reading to the fuel plan. Readings are estimates (typically within 1–2 % of the T.O. sample mission, 3 % at worst): the printed T.O. remains the authority.</li></ul>
       <ul><li><b>Module 1 · Navigation extras</b> (under the NavLog, each panel folded until opened): <b>Terrain under the route</b> reads the ground height along the route from an online elevation service (button, internet needed; the route coordinates are sent to open-meteo.com, or open-elevation.com if that fails), draws it with the planned altitude, marks where the plan is below ground + 1,000 ft (2,000 ft in mountains) and can fill <i>Highest terrain</i> and <i>Terrain by leg</i> for you. <b>Plan file</b> saves the route and every setting to a small .json file and opens it again. <b>Debrief</b> loads a flown track (GPX, KML or CSV) and compares it with the plan: cross-track error, altitude against the profile, time over each waypoint, the track shown on the map (the file stays on the device). <b>3D view</b> shows the terrain strip, the planned path and the flown track with stretched heights. <b>Live layers</b> are links to ADS-B Exchange, NASA FIRMS and Windy opened at the middle of the route. Ground model 90 m, no obstacles — planning and training aid only. Each waypoint between the first and the last has an <b>ALT ft</b> cell: type the planned altitude over that point and the profile (climb, level, descent, TOC / TOD, fuel, time) follows the typed altitudes instead of the cruise altitude; empty cells are free points. In the courseware every checklist has a <b>Read aloud</b> button (the device's own voice).</li></ul>
       <ul><li><b>Module 13 · Mission Card</b> (next to the Briefing, key <code>M</code>) makes the squadron's two-sided <i>Mission Card</i> and a <i>Minimap</i> for printing on A4: two A5 cards side by side on a landscape A4 (left = aircraft 1, right = aircraft 2, or a copy of aircraft 1), a dashed cut line down the middle and a circle with tick marks at the middle of each card's edge as a guide for the hole punch (Checklist binder). Everything is pulled from the plan — call sign, area, IFF and mission from the Briefing, take-off time from Navigation (STEP → START → TAXI → TAKEOFF 10 minutes apart), fuel / BINGO / JOKER and weights, % MAC, C.G., stall, rotation and take-off / landing distances from Weight &amp; Balance (live only for the aircraft loaded there), airfields from ICAO codes in the route — and every field can be typed over (typed values win). Minimap: route points from Navigation or typed, Esri satellite / topo / street (internet needed) or a drawn map, course and distance on every leg, range rings, a data box for each airfield from the AIP directory (drag to move), custom boxes such as OSCAR / FOCAL, printed two per A4 portrait with a cut line (the map is turned 90° to fill a card when the route runs north–south). Only airfields whose coordinates the app knows (squadron KML, seeds, your own points) are placed automatically; for others type lat / lon. Stall speed uses the selected flap setting; fuel is shown in the chosen unit.</li></ul>
-      <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: <b>tick</b> what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), one or <b>several</b> mission items of the same flight (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide — then choose <i>Slides</i> (the slide editor) or <i>Document</i> (the guide outline); the Briefing tab always opens on this mission pick, and the <i>← Pick mission</i> button on both work pages returns to it (ticks are kept). In the document: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. In the slide editor, slides 6.1 / 6.2 (Mission Card briefing) pull first from the <b>Mission Card</b> tab (call sign, aircraft, crew, area, IFF, STEP / START / TAXI / take-off times, landing / log, fuel, JOKER / BINGO), then from Navigation / W&amp;B; what you type in the slide wins. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
+      <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: <b>tick</b> what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), one or <b>several</b> mission items of the same flight (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide — then choose <i>Slides</i> (the slide editor) or <i>Document</i> (the guide outline); the Briefing tab always opens on this mission pick, and the <i>← Pick mission</i> button on both work pages returns to it (ticks are kept). In the document: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. Slide <b>5.3 Bird and other wild life</b> is a picture slide: the pilot opens the RTAF Bird Map, crops the picture, then drags it into the drop box in the editor (or clicks to choose the file, or pastes with Ctrl+V; up to 4 pictures) and the slide shows the heading and the pictures as large as it can — nothing is pulled from the website. In the slide editor, slides 6.1 / 6.2 (Mission Card briefing) pull first from the <b>Mission Card</b> tab (call sign, aircraft, crew, area, IFF, STEP / START / TAXI / take-off times, landing / log, fuel, JOKER / BINGO), then from Navigation / W&amp;B; what you type in the slide wins. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
       <ul><li><b>Module 2 · photo reconnaissance</b> follows the squadron's <b>Photo Reconnaissance Procedures</b> (501 Sqn Phase Manual, 2024). Choose the mission type: <i>AP</i> survey lines (vertical camera, NIKON D750 / H4D presets), <i>FLIR known target</i> (IP at 8 NM, straight run, right orbit about the target, range calls 8 … 2 NM), <i>FLIR moving target</i> (parallel pass, turn toward the target when the camera azimuth passes 135°, printed limits range 2,000-7,000 m and depression 10-40°) or a <i>search pattern</i> (rectangular parallel / creeping, sector, expanding square). Study it in Module 7 (chapter <i>Photo recon</i>: display data, preparation, crew calls, patterns, HIPP / F3EA, tracking, abnormal procedures) and practise with the <i>Phase drill</i> tab (crew calls and the printed limits).</li></ul>
       <ul><li><b>Modules 3 and 5 · Loud speaker and Towering</b> follow the squadron SOP <i>Loud Speaker / Towering</i>. Module 3 opens in the <i>orbit</i> mode: 60-100 KIAS, 700-1000 ft AGL, 90-92 % RPM, 20-30° bank, 3 km² per orbit, wind correction and the terrain case, with warnings outside every printed band. Module 5 uses the SOP speeds and heights (70-90 kt, flypast 300-500 ft, release 100-200 ft, ropes 30 m + 7.3 m). Study both in Module 7 (chapters <i>Loud speaker</i> and <i>Towering</i>). Items the SOP leaves open (speaker side, speaker range, tow drag, bank limit, release-area coordinates) are labelled assumptions.</li>
       <li><b>Module 6 · Rain making</b> follows the Phase Manual <i>Rain making</i> and <i>Hygroscopic flare</i> sections. Three modes: <i>Powder run</i> (formation with an 8 s take-off interval, wingmen upwind and the leader downwind, 100 KIAS, release in the order of the numbers, weight and balance with the powder next to the pilot\'s seat, minimum safe altitude); <i>Hygroscopic flare attack</i> (figure-8 or back-and-forth line under the cloud base, 90-100 KIAS, 30-35 psi, up to 24 flares of 5 minutes each, 1 kg ≙ 150 kg of powder, firing schedule and particle drift into the cloud); and <i>Return</i> (straight-in landing: join 5 NM, flaps 74 %, 70 KIAS, 700 fpm, separation at 3 NM). Study it in Module 7 (chapters <i>Rain making</i> and <i>Hygroscopic flare</i>). The manual gives no wingman separation, flare interval, bank, seeding formula or height at 5 NM — those are labelled assumptions.</li></ul>
