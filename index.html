@@ -30470,7 +30470,7 @@ const BRIEF_SLIDES = function (C) {
 
   /* ---------------- state ---------------- */
   const dflt = () => ({ v: 1, i: 0, title: 'Pre-Flight Briefing', briefer: '', date: '', roll: [{ n: '', r: 'pilot' }, { n: '', r: 'co-pilot' }], emerg: [], prim: null, more: [], alt: { k: 'na' }, objMode: 'train', objTxt: '', prof: null,
-    txt: {}, img: {}, card: {}, radio: null, radioNote: '*** UHF : 255.8\nEmergency : 121.5 / 243.0', areas: null, extra: [], off: {}, pull: { nav: true, wb: true, fuel: true, perf: true } });
+    txt: {}, img: {}, card: {}, radio: null, radioNote: '*** UHF : 255.8\nEmergency : 121.5 / 243.0', areas: null, extra: [], off: {}, pull: { nav: true, wb: true, fuel: true, perf: true, mc: true } });
   let S = dflt(), loaded = false;
   const load = () => { loaded = true; try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && j.v === 1) { S = Object.assign(dflt(), j); S.pull = Object.assign(dflt().pull, j.pull || {}); } } catch (e) { /* ignore */ } };
   let saveErr = false;
@@ -31026,7 +31026,41 @@ const BRIEF_SLIDES = function (C) {
     if (d.img) p.append(picsEd(d.id, rd));
   }
   /* ---- mission card ---- */
+  /* values of the Mission Card tab (typed or pulled there): typed there wins, then the Navigation / W&B pull below, then the card's own auto values */
+  let MCX = null;
+  const MCg = () => { if (!S.pull.mc || typeof MC === 'undefined') return null; if (!MCX) { try { MCX = MC.resolve(); } catch (e) { MCX = { none: 1 }; } } return MCX.none ? null : MCX; };
+  const mcOf = key => {                                            // {v, own} from the Mission Card for a slide field, or null
+    const R = MCg(); if (!R) return null; const r0 = (R.rows && R.rows[0]) || {}, P = (R.perf && R.perf[0]) || {};
+    const V = k => (R[k] && R[k].v) || '', O = k => !!(R[k] && R[k].own), u = (MC.st().fu || 'gal');
+    const fu = k => V(k) ? V(k) + ' ' + u : '', hm = k => String(V(k)).replace(/^(\d{2})(\d{2})$/, '$1:$2');
+    switch (key) {
+      case 'callsign': return { v: V('callsign'), own: O('callsign') };
+      case 'ac': return { v: r0.no || '', own: !!(r0.raw && r0.raw.no && String(r0.raw.no).trim()) };
+      case 'crew': return { v: [r0.pilot, r0.copilot].filter(Boolean).join(', '), own: 0 };
+      case 'steps': return V('takeoff') ? { v: 'STEP ' + hm('step') + ' · START ' + hm('start') + ' · TAXI ' + hm('taxi') + ' · T/O ' + hm('takeoff'), own: 1 } : null;
+      case 'land': return V('landing') ? { v: 'LANDING ' + hm('landing') + (V('log') ? ' · LOG ' + V('log') + ' ชม.' : ''), own: 1 } : null;
+      case 'area': return { v: V('area') || r0.area || '', own: O('area') };
+      case 'iff': return { v: V('iff'), own: O('iff') };
+      case 'fuel': return { v: fu('fuel'), own: O('fuel') };
+      case 'joker': return V('joker') || V('bingo') ? { v: [V('joker') ? 'JOKER ' + fu('joker') : '', V('bingo') ? 'BINGO ' + fu('bingo') : ''].filter(Boolean).join(' · '), own: 1 } : null;
+      case 'symbol': return { v: V('mission'), own: 0 };
+      case 'tw': return { v: (P.tw || {}).v || '', own: !!(P.tw && P.tw.own) };
+      case 'mac': return { v: (P.mac || {}).v || '', own: !!(P.mac && P.mac.own) };
+      case 'vs': return { v: (P.vs || {}).v || '', own: !!(P.vs && P.vs.own) };
+      case 'vlo': return { v: (P.vr || {}).v || '', own: !!(P.vr && P.vr.own) };
+      case 'tod': return { v: (P.tod || {}).v || '', own: !!(P.tod && P.tod.own) };
+      case 'ldd': return { v: (P.ldd || {}).v || '', own: !!(P.ldd && P.ldd.own) };
+    }
+    return null;
+  };
+  const MC_FIRST = { steps: 1, land: 1, joker: 1 };                 // the card has more than the Navigation pull for these, so it leads
   const cardAuto = (key, rk) => {
+    const m = mcOf(key), mv = m && m.v ? m.v : '';
+    if (mv && (m.own || MC_FIRST[key])) return mv;
+    const lg = cardAuto0(key, rk);
+    return lg || mv;
+  };
+  const cardAuto0 = (key, rk) => {
     if (key === 'symbol') return missionsText();
     if (key === 'ac') return S.pull.wb && X && X.ac ? String(X.ac) : '';
     if (key === 'crew') { const r = S.roll.filter(q => q.n && q.n.trim() && q.r !== 'passenger'); return r.length ? r.map(q => q.n.trim()).join(', ') : (S.pull.wb ? fromLines((A(rk) || []).map(s => s.replace(/^[^:]*: /, ''))) : ''); }
@@ -31037,18 +31071,18 @@ const BRIEF_SLIDES = function (C) {
   };
   const cval = (key, rk) => { const v = S.card[key]; return v && v.trim() ? { v, own: 1 } : { v: cardAuto(key, rk), own: 0 }; };
   function drawMc1(st) {
-    X = collect(); const tx = E('brs-tx small', 'div');
+    X = collect(); MCX = null; const tx = E('brs-tx small', 'div');
     tx.append(E('brs-l', 'div', '6.1 FRONT / BASIC INFORMATION'));
     F61.forEach(f => { const c = cval(f[2], f[3]); tx.append(E('brs-l l1' + (c.v ? '' : ' none'), 'div', [E('', 'b', f[0] + ' ' + f[1] + ' : '), c.v || '-', c.v && !c.own ? E('brs-src', 'em', ' ⇢') : null])); });
     st.append(head('6', 'MISSION CARD BRIEFING'), E('brs-body small', 'div', tx));
   }
   function cardEd(p, rows, rd) {
-    X = collect();
+    X = collect(); MCX = null;
     rows.forEach(f => { const c = cval(f[2], f[3]); p.append(field(f[0] + ' ' + f[1] + (c.own ? '' : (c.v ? '  (⇢ อัตโนมัติ)' : '')), nokeys(h('input', { type: 'text', class: 'brs-in', value: S.card[f[2]] || '', placeholder: c.v || 'พิมพ์เอง', oninput: ev => { S.card[f[2]] = ev.target.value; save(); rd(); } })))); });
   }
-  function edMc1(p, rd) { p.append(E('brs-fine', 'p', 'ช่องที่เว้นว่างจะดึงค่าอัตโนมัติจากแท็บ Navigation / W&B (ถ้ามี) — พิมพ์ทับเพื่อใช้ค่าของคุณ'), pullBoxes(rd)); cardEd(p, F61, rd); }
+  function edMc1(p, rd) { p.append(E('brs-fine', 'p', 'ช่องที่เว้นว่างจะดึงค่าจากแท็บ Mission Card ก่อน แล้วจึง Navigation / W&B (ถ้ามี) — พิมพ์ทับเพื่อใช้ค่าของคุณ'), pullBoxes(rd)); cardEd(p, F61, rd); }
   function drawMc2(st) {
-    X = collect(); const tx = E('brs-tx small', 'div'), pp = pics('mc2');
+    X = collect(); MCX = null; const tx = E('brs-tx small', 'div'), pp = pics('mc2');
     tx.append(E('brs-l', 'div', '6.2 BACK / WEIGHT BALANCE & PERFORMANCE'), E('brs-l l1', 'div', '6.2.1 WEIGHT BALANCE'));
     const row = f => { const c = cval(f[1], f[2]); tx.append(E('brs-l l2' + (c.v ? '' : ' none'), 'div', [E('', 'b', f[0].replace(/^[A-E]\. /, m => m)), ' : ', c.v || '-'])); };
     F62A.forEach(row); tx.append(E('brs-l l1', 'div', '6.2.2 PERFORMANCE')); F62B.forEach(row);
@@ -31064,7 +31098,7 @@ const BRIEF_SLIDES = function (C) {
   function edMc3(p, rd) { p.append(field('6.3.1 FLIGHT COMMANDER / MISSION COMMANDER', inp(S.card.cmd || '', v => { S.card.cmd = v; }, (S.roll.filter(r => r.r === 'pilot' && r.n)[0] || {}).n || '', rd)), field('6.3.2 OTHER', inp(S.card.other || '', v => { S.card.other = v; }, '', rd)), field('หมายเหตุเพิ่มเติม (บรรทัดละข้อ)', ta(S.txt.mc3 || '', v => { S.txt.mc3 = v; }, '', rd))); }
   function pullBoxes(rd) {
     const mk = (k, lab) => E('brs-chk-l', 'label', [h('input', { type: 'checkbox', checked: S.pull[k] ? true : null, onchange: ev => { S.pull[k] = ev.target.checked; save(); rd(true); } }), ' ' + lab]);
-    return E('brs-pulls', 'div', [E('', 'b', 'ดึงข้อมูลจาก: '), mk('nav', 'Navigation'), mk('wb', 'W&B'), mk('fuel', 'W&B · Fuel plan'), mk('perf', 'W&B · Summary')]);
+    return E('brs-pulls', 'div', [E('', 'b', 'ดึงข้อมูลจาก: '), mk('mc', 'Mission Card'), mk('nav', 'Navigation'), mk('wb', 'W&B'), mk('fuel', 'W&B · Fuel plan'), mk('perf', 'W&B · Summary')]);
   }
   /* ---- radio ---- */
   function drawRadio(st) {
@@ -33651,7 +33685,7 @@ const App = (function () {
       <ul><li><b>Module 11 · Weight &amp; Balance</b> (second tab, key <code>W</code>) is a full-screen calculator that works as the flight manual does: moment = weight × arm, C.G. arm = Σ moment ÷ Σ weight, % MAC = (arm − 118.11) ÷ 74.803 × 100, checked against the Figure 4-1 envelope and the 6,100 lb limit for the zero-fuel, ramp, take-off and landing conditions (fuel burn-off drawn on the chart). It also checks the Figure 4-2 station loading (350 / 575 / 600 / 575 / 350 lb, 700 lb per wing, two stores on one wing and none on the other prohibited), uses the §I weights (basic empty, crew 200 lb, oil 12 lb, fuel 1,060 lb at 6.5 lb/gal) and the Figure 6-1 store weights. <b>The arms of the seats, tanks, cabin and pylons are not in the T.O.</b>: the pre-filled arms are marked training placeholders — enter the arms and the weighed basic weight from the aircraft's own record. Two more views in the same tab: <b>Fuel · BINGO · JOKER</b> (RTAF ข้อ ๑๙ and T.O. §VI) and <b>T.O. Charts</b> — the performance graphs of T.O. Figs 6-7 to 6-16 (climb, long range cruise 96 % / 90 % RPM, loiter) shown as the <b>original scans</b> with only the reading lines drawn over them (nothing is redrawn; zoom, pan and drag to set the weight), a look-up by weight / altitude / drag index, the drag index from the stores (Fig 6-1), and a button to send the reading to the fuel plan. Readings are estimates (typically within 1–2 % of the T.O. sample mission, 3 % at worst): the printed T.O. remains the authority.</li></ul>
       <ul><li><b>Module 1 · Navigation extras</b> (under the NavLog, each panel folded until opened): <b>Terrain under the route</b> reads the ground height along the route from an online elevation service (button, internet needed; the route coordinates are sent to open-meteo.com, or open-elevation.com if that fails), draws it with the planned altitude, marks where the plan is below ground + 1,000 ft (2,000 ft in mountains) and can fill <i>Highest terrain</i> and <i>Terrain by leg</i> for you. <b>Plan file</b> saves the route and every setting to a small .json file and opens it again. <b>Debrief</b> loads a flown track (GPX, KML or CSV) and compares it with the plan: cross-track error, altitude against the profile, time over each waypoint, the track shown on the map (the file stays on the device). <b>3D view</b> shows the terrain strip, the planned path and the flown track with stretched heights. <b>Live layers</b> are links to ADS-B Exchange, NASA FIRMS and Windy opened at the middle of the route. Ground model 90 m, no obstacles — planning and training aid only. Each waypoint between the first and the last has an <b>ALT ft</b> cell: type the planned altitude over that point and the profile (climb, level, descent, TOC / TOD, fuel, time) follows the typed altitudes instead of the cruise altitude; empty cells are free points. In the courseware every checklist has a <b>Read aloud</b> button (the device's own voice).</li></ul>
       <ul><li><b>Module 13 · Mission Card</b> (next to the Briefing, key <code>M</code>) makes the squadron's two-sided <i>Mission Card</i> and a <i>Minimap</i> for printing on A4: two A5 cards side by side on a landscape A4 (left = aircraft 1, right = aircraft 2, or a copy of aircraft 1), a dashed cut line down the middle and a circle with tick marks at the middle of each card's edge as a guide for the hole punch (Checklist binder). Everything is pulled from the plan — call sign, area, IFF and mission from the Briefing, take-off time from Navigation (STEP → START → TAXI → TAKEOFF 10 minutes apart), fuel / BINGO / JOKER and weights, % MAC, C.G., stall, rotation and take-off / landing distances from Weight &amp; Balance (live only for the aircraft loaded there), airfields from ICAO codes in the route — and every field can be typed over (typed values win). Minimap: route points from Navigation or typed, Esri satellite / topo / street (internet needed) or a drawn map, course and distance on every leg, range rings, a data box for each airfield from the AIP directory (drag to move), custom boxes such as OSCAR / FOCAL, printed two per A4 portrait with a cut line (the map is turned 90° to fill a card when the route runs north–south). Only airfields whose coordinates the app knows (squadron KML, seeds, your own points) are placed automatically; for others type lat / lon. Stall speed uses the selected flap setting; fuel is shown in the chosen unit.</li></ul>
-      <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: <b>tick</b> what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), one or <b>several</b> mission items of the same flight (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide — then choose <i>Slides</i> (the slide editor) or <i>Document</i> (the guide outline); the Briefing tab always opens on this mission pick, and the <i>← Pick mission</i> button on both work pages returns to it (ticks are kept). In the document: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
+      <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: <b>tick</b> what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), one or <b>several</b> mission items of the same flight (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide — then choose <i>Slides</i> (the slide editor) or <i>Document</i> (the guide outline); the Briefing tab always opens on this mission pick, and the <i>← Pick mission</i> button on both work pages returns to it (ticks are kept). In the document: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. In the slide editor, slides 6.1 / 6.2 (Mission Card briefing) pull first from the <b>Mission Card</b> tab (call sign, aircraft, crew, area, IFF, STEP / START / TAXI / take-off times, landing / log, fuel, JOKER / BINGO), then from Navigation / W&amp;B; what you type in the slide wins. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
       <ul><li><b>Module 2 · photo reconnaissance</b> follows the squadron's <b>Photo Reconnaissance Procedures</b> (501 Sqn Phase Manual, 2024). Choose the mission type: <i>AP</i> survey lines (vertical camera, NIKON D750 / H4D presets), <i>FLIR known target</i> (IP at 8 NM, straight run, right orbit about the target, range calls 8 … 2 NM), <i>FLIR moving target</i> (parallel pass, turn toward the target when the camera azimuth passes 135°, printed limits range 2,000-7,000 m and depression 10-40°) or a <i>search pattern</i> (rectangular parallel / creeping, sector, expanding square). Study it in Module 7 (chapter <i>Photo recon</i>: display data, preparation, crew calls, patterns, HIPP / F3EA, tracking, abnormal procedures) and practise with the <i>Phase drill</i> tab (crew calls and the printed limits).</li></ul>
       <ul><li><b>Modules 3 and 5 · Loud speaker and Towering</b> follow the squadron SOP <i>Loud Speaker / Towering</i>. Module 3 opens in the <i>orbit</i> mode: 60-100 KIAS, 700-1000 ft AGL, 90-92 % RPM, 20-30° bank, 3 km² per orbit, wind correction and the terrain case, with warnings outside every printed band. Module 5 uses the SOP speeds and heights (70-90 kt, flypast 300-500 ft, release 100-200 ft, ropes 30 m + 7.3 m). Study both in Module 7 (chapters <i>Loud speaker</i> and <i>Towering</i>). Items the SOP leaves open (speaker side, speaker range, tow drag, bank limit, release-area coordinates) are labelled assumptions.</li>
       <li><b>Module 6 · Rain making</b> follows the Phase Manual <i>Rain making</i> and <i>Hygroscopic flare</i> sections. Three modes: <i>Powder run</i> (formation with an 8 s take-off interval, wingmen upwind and the leader downwind, 100 KIAS, release in the order of the numbers, weight and balance with the powder next to the pilot\'s seat, minimum safe altitude); <i>Hygroscopic flare attack</i> (figure-8 or back-and-forth line under the cloud base, 90-100 KIAS, 30-35 psi, up to 24 flares of 5 minutes each, 1 kg ≙ 150 kg of powder, firing schedule and particle drift into the cloud); and <i>Return</i> (straight-in landing: join 5 NM, flaps 74 %, 70 KIAS, 700 fpm, separation at 3 NM). Study it in Module 7 (chapters <i>Rain making</i> and <i>Hygroscopic flare</i>). The manual gives no wingman separation, flare interval, bank, seeding formula or height at 5 NM — those are labelled assumptions.</li></ul>
