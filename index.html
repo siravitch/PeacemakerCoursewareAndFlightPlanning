@@ -2738,6 +2738,21 @@ textarea.mcd-in{resize:vertical}
 .ter-key{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:11px;color:var(--mute)}.ter-key i{display:inline-block;width:14px;height:8px;border-radius:2px;margin-right:2px}
 .ter-key .k-land{background:#8a6a3a}.ter-key .k-env{background:none;border-top:2px dashed var(--amber);height:0}.ter-key .k-plan{background:var(--cyan);height:3px}.ter-key .k-bad{background:var(--red);width:8px;border-radius:50%;height:8px}
 .ter-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+/* Navigation extras (plan file · debrief · 3D · live layers) */
+.nx-wrap{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.nx{border:1px solid var(--line);border-radius:10px;background:#0a121a}
+.nx>summary{cursor:pointer;list-style:none;padding:9px 12px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.nx>summary::-webkit-details-marker{display:none}.nx>summary::before{content:"▸ ";color:var(--dim)}.nx[open]>summary::before{content:"▾ "}
+.nx-b{padding:0 12px 10px}
+.nx-b .msgs{margin:6px 0}
+.dbg-x{stroke:#ff4fd8;stroke-width:1.4}.dbg-a{stroke:#ff4fd8;stroke-width:1.6}
+.ter-key .k-trk{background:#ff4fd8;height:3px}
+.nx-tw{overflow-x:auto;margin-top:8px}.nx-t td,.nx-t th{white-space:nowrap}.nx-t td.l{text-align:left}
+.nx-v3{margin-top:8px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0b1620}
+.nx-cv{display:block;width:100%;height:auto;touch-action:none;cursor:grab}
+.nx-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.nx-links .btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-decoration:none}.nx-links small{font-size:10.5px;color:var(--mute);font-weight:400}
+li.say .cw-it{background:#3dd6f51f;outline:1px solid var(--cyan);outline-offset:-1px}
+.cw-clh [data-say][aria-pressed=true]{border-color:var(--cyan);color:var(--cyan)}
 
 </style>
 </head>
@@ -22013,7 +22028,7 @@ const TERR = (function () {
       const sm = sites(ctx.legs, ctx.wps, s.w), flat = []; sm.list.forEach(q => q.ll.forEach(p => flat.push(p)));
       if (!flat.length) throw new Error('no route');
       const res = await ask(flat); let k = 0;
-      const pts = sm.list.map(q => { const e = q.ll.map(() => { const x = res.elev[k++]; return fin(x) ? x * FT : 0; }); return { s: +q.s.toFixed(2), li: q.li, g: Math.round(e[0]), m: Math.round(Math.max.apply(null, e)) }; });
+      const pts = sm.list.map(q => { const e = q.ll.map(() => { const x = res.elev[k++]; return fin(x) ? x * FT : 0; }); const o = { s: +q.s.toFixed(2), li: q.li, g: Math.round(e[0]), m: Math.round(Math.max.apply(null, e)) }; if (e.length === 3) { o.l = Math.round(e[1]); o.r = Math.round(e[2]); } return o; });
       s.data = { key: routeKey(ctx.wps, s.w), w: s.w, D: sm.D, at: new Date().toISOString(), src: res.src, pts, names: ctx.wps.map(p => p.name), cum: ctx.legs.reduce((a, l) => (a.push(a[a.length - 1] + (l.distNm > 0 ? l.distNm : 0)), a), [0]) };
       save();
     } catch (e) { err = e && e.message === 'offline' ? 'No internet connection — terrain lookup needs to be online.' : 'Terrain lookup failed (' + (e && e.message ? e.message : 'error') + '). Check the connection and try again.'; }
@@ -22068,7 +22083,275 @@ const TERR = (function () {
     }
     return h('div', { class: 'ter' }, h('div', { class: 'ter-h' }, h('h4', null, 'Terrain under the route · online'), h('div', { class: 'ter-ctl' }, sel, btn)), body);
   }
-  return { panel, sites, routeKey, state: st, url1: 'https://api.open-meteo.com/v1/elevation', url2: 'https://api.open-elevation.com/api/v1/lookup' };
+  return { panel, sites, routeKey, state: st, restore: d => { const s = st(); s.w = d.w; s.data = d; save(); }, url1: 'https://api.open-meteo.com/v1/elevation', url2: 'https://api.open-elevation.com/api/v1/lookup' };
+}());
+
+;
+/* ==========================================================================
+   NAVIGATION EXTRAS  (global NAVX) — four collapsed panels under the NavLog of the Navigation Flight module
+   1. Plan file   — save the route + all Navigation settings (+ the terrain profile read for it) as a .json file; open such a file again.
+   2. Debrief     — load the flown track (GPX / KML / CSV), compare it with the plan: cross-track error, altitude against the planned
+                    profile (and the terrain), time over each waypoint; the track is drawn on the map.
+   3. 3D view     — Three.js: terrain strip under the route, planned path, the safety floor and the flown track, vertical exaggeration.
+   4. Live layers — link-outs only (ADS-B Exchange, NASA FIRMS, Windy) opened at the middle of the route; nothing is embedded or sent
+                    until the link is pressed.
+   Everything runs in the browser; the track file never leaves the device.  Planning / training aid only.
+   ========================================================================== */
+const NAVX = (function () {
+  const FT = 3.28084, NMFT = 6076.12, fin = Number.isFinite, f0 = n => Math.round(n).toLocaleString('en-US');
+  const OPEN = { file: false, deb: false, v3: false, links: false };
+  const DEB = { name: '', tr: null, unit: 'auto', err: '', layer: null, layerFor: null };
+  let PENDING = null, PERR = '';
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const det = (key, title, kids) => { const d = h('details', { class: 'nx', 'data-nx': key }, h('summary', null, title), h('div', { class: 'nx-b' }, kids)); d.open = OPEN[key]; d.addEventListener('toggle', () => { OPEN[key] = d.open; if (key === 'v3' && d.open) V3.want(); }); return d; };
+  const download = (name, text, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type || 'application/json' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
+  const pickFile = (accept, cb) => { const i = h('input', { type: 'file', accept, style: 'display:none' }); i.addEventListener('change', () => { const f = i.files && i.files[0]; if (f) { const r = new FileReader(); r.onload = () => cb(String(r.result), f.name); r.onerror = () => cb(null, f.name); r.readAsText(f); } i.remove(); }); document.body.appendChild(i); i.click(); };
+
+  /* ------------------------------------------------------------------ 1 · plan file */
+  function planJson(ctx) {
+    const M = ctx.M, inputs = {}; M.fields.forEach(f => { const c = M.inputs[f.k]; inputs[f.k] = f.t === 'chk' ? c.checked : c.value; });
+    const d = TERR.state().data;
+    return { app: 'AU-23A planner', kind: 'navigation-plan', version: 1, saved: new Date().toISOString(), name: ctx.wps[0].name + ' → ' + ctx.wps[ctx.wps.length - 1].name,
+      waypoints: M.editor.pts.map(p => ({ name: p.name, lat: +p.lat.toFixed(6), lon: +p.lon.toFixed(6) })), inputs, terrain: d && d.key === TERR.routeKey(ctx.wps, d.w) ? d : null };
+  }
+  function readPlan(txt, fname) {
+    let j; try { j = JSON.parse(txt); } catch (e) { throw new Error('not a JSON file'); }
+    if (!j || j.kind !== 'navigation-plan') throw new Error('this is not an AU-23A navigation plan file');
+    if (j.version !== 1) throw new Error('plan file version ' + j.version + ' is not supported');
+    const w = Array.isArray(j.waypoints) ? j.waypoints : [];
+    if (w.length < 2 || w.length > 40 || w.some(p => !p || !fin(+p.lat) || !fin(+p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180)) throw new Error('the waypoints in the file are not valid (2 to 40 points with latitude and longitude needed)');
+    return { fname, j, wps: w.map(p => ({ name: String(p.name || '').slice(0, 24), lat: +p.lat, lon: +p.lon })) };
+  }
+  function applyPlan(ctx, pl) {
+    const M = ctx.M, j = pl.j, inp = j.inputs && typeof j.inputs === 'object' ? j.inputs : {}; let n = 0;
+    M.editor.set(pl.wps, true);
+    M.fields.forEach(f => {
+      if (!(f.k in inp)) return; const c = M.inputs[f.k]; if (!c) return; n++;
+      if (f.t === 'chk') { c.checked = !!inp[f.k]; c.dispatchEvent(new Event('change', { bubbles: true })); }
+      else { c.value = String(inp[f.k]); c.dispatchEvent(new Event(f.t === 'sel' ? 'change' : 'input', { bubbles: true })); }
+    });
+    if (j.terrain && Array.isArray(j.terrain.pts) && j.terrain.key) TERR.restore(j.terrain);
+    PENDING = null; M.touch(); toast('Plan loaded: ' + pl.wps.length + ' waypoints, ' + n + ' settings' + (j.terrain ? ', terrain profile' : ''));
+  }
+  function filePanel(ctx) {
+    const kids = [h('div', { class: 'ter-hint' }, 'Save the route and every Navigation setting (and the terrain profile, if it was read for this route) as a small file you can keep, send or open on another device. Opening a file replaces the current route and settings.'),
+      h('div', { class: 'ter-act' }, h('button', { class: 'btn', type: 'button', onclick: () => {
+        const j = planJson(ctx), nm = 'au23a-nav-' + j.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + j.saved.slice(0, 10) + '.json'; download(nm, JSON.stringify(j, null, 1)); toast('Plan saved: ' + nm); } }, 'Save plan file'),
+      h('button', { class: 'btn ghost', type: 'button', onclick: () => pickFile('.json,application/json', (t, fn) => { PERR = ''; PENDING = null; try { if (t == null) throw new Error('the file could not be read'); PENDING = readPlan(t, fn); } catch (e) { PERR = e.message; } ctx.redraw(); }) }, 'Open plan file…'))];
+    if (PERR) kids.push(h('div', { class: 'msg e', role: 'alert' }, PERR));
+    if (PENDING) kids.push(h('div', { class: 'msg w' }, 'File “' + PENDING.fname + '”: ' + (PENDING.j.name || 'plan') + ' — ' + PENDING.wps.length + ' waypoints (' + PENDING.wps.map(p => p.name || '?').join(' → ') + '), saved ' + String(PENDING.j.saved || '').slice(0, 16).replace('T', ' ') + ' UTC. This replaces the route and settings now on the screen.'),
+      h('div', { class: 'ter-act' }, h('button', { class: 'btn', type: 'button', onclick: () => applyPlan(ctx, PENDING) }, 'Replace current plan'), h('button', { class: 'btn ghost', type: 'button', onclick: () => { PENDING = null; ctx.redraw(); } }, 'Cancel')));
+    return det('file', 'Plan file · save / open', kids);
+  }
+
+  /* ------------------------------------------------------------------ 2 · debrief */
+  const tnum = v => { if (v == null || v === '') return null; if (/^-?\d+(\.\d+)?$/.test(String(v).trim())) { const x = +v; return x > 1e12 ? x : x > 1e9 ? x * 1000 : null; } let s = String(v).trim(); if (/^\d{4}-\d\d-\d\d[T ]\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(s)) s = s.replace(' ', 'T') + 'Z'; const t = Date.parse(s); return fin(t) ? t : null; };
+  function parseTrack(text) {
+    const t = text.replace(/^\uFEFF/, '').trim(); let pts = [], kind = '';
+    if (t[0] === '<') {
+      const doc = new DOMParser().parseFromString(t, 'application/xml'); if (doc.getElementsByTagName('parsererror').length) throw new Error('not a valid GPX / KML file');
+      const root = doc.documentElement.localName.toLowerCase(), g1 = (e, n) => { const x = e.getElementsByTagName(n)[0]; return x ? x.textContent : null; };
+      if (root === 'gpx') {
+        kind = 'GPX'; let e = [].slice.call(doc.getElementsByTagName('trkpt')); if (!e.length) e = [].slice.call(doc.getElementsByTagName('rtept'));
+        pts = e.map(p => ({ lat: +p.getAttribute('lat'), lon: +p.getAttribute('lon'), alt: g1(p, 'ele') != null ? +g1(p, 'ele') : NaN, t: tnum(g1(p, 'time')) }));
+      } else if (root === 'kml') {
+        kind = 'KML'; const tr = [].slice.call(doc.getElementsByTagName('gx:Track'));
+        if (tr.length) { tr.forEach(k => { const w = [].slice.call(k.getElementsByTagName('when')), c = [].slice.call(k.getElementsByTagName('gx:coord')); c.forEach((x, i) => { const a = x.textContent.trim().split(/\s+/).map(Number); pts.push({ lon: a[0], lat: a[1], alt: fin(a[2]) ? a[2] : NaN, t: w[i] ? tnum(w[i].textContent) : null }); }); }); }
+        else {
+          let best = ''; [].slice.call(doc.getElementsByTagName('coordinates')).forEach(c => { if (c.textContent.length > best.length) best = c.textContent; });
+          pts = best.trim().split(/\s+/).filter(Boolean).map(s => { const a = s.split(',').map(Number); return { lon: a[0], lat: a[1], alt: fin(a[2]) ? a[2] : NaN, t: null }; });
+        }
+      } else throw new Error('the XML file is neither GPX nor KML');
+    } else {
+      kind = 'CSV'; const rows = t.split(/\r?\n/).filter(r => r.trim()).map(r => r.split(/[,;\t]/).map(x => x.trim()));
+      let ci = { lat: 0, lon: 1, alt: 2, t: 3 }, start = 0;
+      if (rows.length && rows[0].some(x => x !== '' && !fin(+x))) {
+        const hd = rows[0]; start = 1; ci = { lat: hd.findIndex(x => /^lat/i.test(x)), lon: hd.findIndex(x => /^(lon|lng)/i.test(x)), alt: hd.findIndex(x => /^(alt|ele|height)/i.test(x)), t: hd.findIndex(x => /^(time|date|timestamp|utc)/i.test(x)) };
+        if (ci.lat < 0 || ci.lon < 0) throw new Error('CSV needs columns named lat and lon');
+      }
+      pts = rows.slice(start).map(r => ({ lat: +r[ci.lat], lon: +r[ci.lon], alt: ci.alt >= 0 && r[ci.alt] !== '' && r[ci.alt] != null ? +r[ci.alt] : NaN, t: ci.t >= 0 ? tnum(r[ci.t]) : null }));
+    }
+    pts = pts.filter(p => fin(p.lat) && fin(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180);
+    if (pts.length < 2) throw new Error('fewer than two track points found');
+    if (pts.length > 4000) { const k = Math.ceil(pts.length / 4000); pts = pts.filter((p, i) => i % k === 0 || i === pts.length - 1); }
+    return { kind, pts, hasT: pts.every(p => p.t != null), hasAlt: pts.some(p => fin(p.alt)) };
+  }
+  function analyse(tr, ctx, unit) {
+    const wps = ctx.wps, legs = ctx.legs, cum = [0]; legs.forEach(l => cum.push(cum[cum.length - 1] + (l.distNm > 0 ? l.distNm : 0)));
+    const D = cum[cum.length - 1], toFt = (unit === 'auto' ? (tr.kind === 'CSV' ? 'ft' : 'm') : unit) === 'm' ? FT : 1;
+    const geo = legs.map((l, i) => { const A = wps[i], B = wps[i + 1], k = Math.cos((A.lat + B.lat) / 2 * Math.PI / 180), bx = (B.lon - A.lon) * k * 60, by = (B.lat - A.lat) * 60; return { A, k, bx, by, len2: bx * bx + by * by, len: Math.sqrt(bx * bx + by * by) }; });
+    const altAt = x => { if (ctx.segs && ctx.segs.length) { for (const g of ctx.segs) if (x >= g.s0 - 1e-6 && x <= g.s1 + 1e-6) return g.s1 > g.s0 ? g.alt0 + (g.alt1 - g.alt0) * (x - g.s0) / (g.s1 - g.s0) : g.alt0; return NaN; } return ctx.cruise > 0 ? ctx.cruise : NaN; };
+    const planMin = (s, i) => { const l = legs[i]; if (!l || !l.ok || !fin(l.cumMin) || !(l.distNm > 0)) return NaN; return l.cumMin - l.eteMin + l.eteMin * clamp((s - cum[i]) / l.distNm, 0, 1); };
+    // ground speed → airborne window (first / last point at >= 50 kt)
+    const gs = tr.pts.map((p, i) => { if (!i || !tr.hasT) return NaN; const q = tr.pts[i - 1], dt = (p.t - q.t) / 3600000; return dt > 0 ? C.haversine([q.lat, q.lon], [p.lat, p.lon]) / 1852 / dt : NaN; });
+    let i0 = 0, i1 = tr.pts.length - 1;
+    if (tr.hasT) { const a = gs.findIndex(x => x >= 50); if (a >= 0) { i0 = Math.max(0, a - 1); for (let k = gs.length - 1; k >= 0; k--) if (gs[k] >= 50) { i1 = k; break; } } }
+    const out = [];
+    for (let n = i0; n <= i1; n++) {
+      const p = tr.pts[n]; let best = null;
+      geo.forEach((g, i) => { if (!(g.len2 > 0)) return; const px = (p.lon - g.A.lon) * g.k * 60, py = (p.lat - g.A.lat) * 60, t = clamp((px * g.bx + py * g.by) / g.len2, 0, 1), dx = px - t * g.bx, dy = py - t * g.by, d = Math.sqrt(dx * dx + dy * dy); if (!best || d < best.d) best = { i, t, d, x: -(g.bx * py - g.by * px) / g.len }; });
+      if (!best) continue; const s = cum[best.i] + best.t * legs[best.i].distNm, alt = fin(p.alt) ? p.alt * toFt : NaN;
+      out.push({ n, s, x: (best.x >= 0 ? 1 : -1) * best.d, d: best.d, alt, plan: altAt(s), tm: tr.hasT ? (p.t - tr.pts[i0].t) / 60000 : NaN, pm: planMin(s, best.i), lat: p.lat, lon: p.lon });
+    }
+    const ab = out.map(o => Math.abs(o.x)), N = out.length || 1, ad = out.filter(o => fin(o.alt) && fin(o.plan)).map(o => o.alt - o.plan);
+    const st = { n: out.length, maxX: Math.max.apply(null, ab.concat([0])), meanX: ab.reduce((a, b) => a + b, 0) / N, in1: 100 * ab.filter(x => x <= 1).length / N, in2: 100 * ab.filter(x => x <= 2).length / N,
+      maxD: Math.max.apply(null, out.map(o => o.d).concat([0])), altN: ad.length, altMean: ad.length ? ad.reduce((a, b) => a + b, 0) / ad.length : NaN, altMax: ad.length ? Math.max.apply(null, ad.map(Math.abs)) : NaN, altIn500: ad.length ? 100 * ad.filter(x => Math.abs(x) <= 500).length / ad.length : NaN,
+      durMin: tr.hasT ? (tr.pts[i1].t - tr.pts[i0].t) / 60000 : NaN, planMin: legs.length && fin(legs[legs.length - 1].cumMin) ? legs[legs.length - 1].cumMin : NaN, t0: tr.hasT ? tr.pts[i0].t : null, winned: i0 > 0 || i1 < tr.pts.length - 1 };
+    const rows = []; let from = 0;
+    if (tr.hasT) for (let j = 0; j < wps.length; j++) {
+      let k = -1; for (let q = from; q < out.length; q++) if (out[q].s >= cum[j] - 0.3 && out[q].d < 8) { k = q; break; }
+      if (k < 0) { rows.push({ name: wps[j].name, miss: true }); continue; } from = k;
+      rows.push({ name: wps[j].name, act: out[k].tm, plan: j === 0 ? 0 : legs[j - 1].cumMin, x: out[k].x, alt: out[k].alt, planAlt: altAt(cum[j]) });
+    }
+    return { out, st, rows, D, cum, altAt, toFt };
+  }
+  function xAxis(W, m, D) { const xs = D > 200 ? 50 : D > 80 ? 20 : D > 30 ? 10 : 5; let s = ''; for (let x = 0; x <= D; x += xs) s += '<text x="' + (m.l + (W - m.l - m.r) * x / D).toFixed(1) + '" y="__Y__" text-anchor="middle" class="ter-tx">' + x + '</text>'; return s; }
+  function dChart(a, ter, clr) {
+    const W = 640, m = { l: 48, r: 10, t: 12, b: 24 }, D = Math.max(a.D, 1), X = s => m.l + (W - m.l - m.r) * s / D;
+    // cross-track
+    const H1 = 140, ym = Math.max(2, Math.ceil(a.st.maxX)), Y1 = v => m.t + (H1 - m.t - m.b) * (1 - (v + ym) / (2 * ym));
+    let s1 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H1 + '" class="ter-svg" role="img" aria-label="Cross-track error along the route">';
+    [-ym, -1, 0, 1, ym].forEach((v, i, arr) => { if (i && arr[i - 1] === v) return; s1 += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y1(v).toFixed(1) + '" y2="' + Y1(v).toFixed(1) + '" class="' + (v === 0 ? 'ter-wp' : 'ter-gl') + '"/><text x="' + (m.l - 5) + '" y="' + (Y1(v) + 3.5).toFixed(1) + '" text-anchor="end" class="ter-tx">' + (v > 0 ? '+' : '') + v + '</text>'; });
+    s1 += xAxis(W, m, D).replace(/__Y__/g, H1 - m.b + 12) + '<text transform="translate(11 ' + H1 / 2 + ') rotate(-90)" text-anchor="middle" class="ter-tx ter-ax">NM right (+) / left (−)</text>';
+    a.cum.forEach(c => { s1 += '<line x1="' + X(c).toFixed(1) + '" x2="' + X(c).toFixed(1) + '" y1="' + m.t + '" y2="' + (H1 - m.b) + '" class="ter-wp"/>'; });
+    s1 += '<polyline class="dbg-x" fill="none" points="' + a.out.map(o => X(o.s).toFixed(1) + ',' + Y1(clamp(o.x, -ym, ym)).toFixed(1)).join(' ') + '"/></svg>';
+    // altitude
+    const H2 = 220, alts = a.out.map(o => o.alt).concat(a.out.map(o => o.plan)).filter(fin), terOk = !!ter, top0 = Math.max(1000, Math.max.apply(null, alts.concat(terOk ? ter.pts.map(p => p.m + clr) : [0])));
+    const st = top0 > 14000 ? 4000 : top0 > 8000 ? 2000 : top0 > 4000 ? 1000 : 500, ymax = Math.ceil(top0 / st) * st, Y2 = v => H2 - m.b - (H2 - m.t - m.b) * Math.max(0, v) / ymax;
+    let s2 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H2 + '" class="ter-svg" role="img" aria-label="Flown altitude against the planned profile">';
+    for (let v = 0; v <= ymax; v += st) s2 += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y2(v) + '" y2="' + Y2(v) + '" class="ter-gl"/><text x="' + (m.l - 5) + '" y="' + (Y2(v) + 3.5) + '" text-anchor="end" class="ter-tx">' + f0(v) + '</text>';
+    s2 += xAxis(W, m, D).replace(/__Y__/g, H2 - m.b + 12) + '<text x="' + W / 2 + '" y="' + (H2 - 2) + '" text-anchor="middle" class="ter-tx ter-ax">NM along planned route</text><text transform="translate(11 ' + H2 / 2 + ') rotate(-90)" text-anchor="middle" class="ter-tx ter-ax">ft MSL</text>';
+    if (terOk) s2 += '<polygon class="ter-land" points="' + X(ter.pts[0].s) + ',' + Y2(0) + ' ' + ter.pts.map(p => X(p.s).toFixed(1) + ',' + Y2(p.m).toFixed(1)).join(' ') + ' ' + X(ter.pts[ter.pts.length - 1].s) + ',' + Y2(0) + '"/><polyline class="ter-env" fill="none" points="' + ter.pts.map(p => X(p.s).toFixed(1) + ',' + Y2(p.m + clr).toFixed(1)).join(' ') + '"/>';
+    const pl = []; for (let k = 0; k <= 200; k++) { const x = D * k / 200, v = a.altAt(x); if (fin(v)) pl.push(X(x).toFixed(1) + ',' + Y2(v).toFixed(1)); }
+    if (pl.length > 1) s2 += '<polyline class="ter-plan" fill="none" points="' + pl.join(' ') + '"/>';
+    const ap = a.out.filter(o => fin(o.alt)); if (ap.length > 1) s2 += '<polyline class="dbg-a" fill="none" points="' + ap.map(o => X(o.s).toFixed(1) + ',' + Y2(o.alt).toFixed(1)).join(' ') + '"/>';
+    return { x: s1, a: s2 + '</svg>' };
+  }
+  const mm = v => (fin(v) ? (v >= 0 ? '+' : '−') + Math.abs(Math.round(v * 10) / 10).toFixed(1) + ' min' : '—');
+  function syncLayer(a) {
+    if (typeof map === 'undefined' || typeof L === 'undefined') return;
+    if (!DEB.tr || !a) { if (DEB.layer) { map.removeLayer(DEB.layer); DEB.layer = null; DEB.layerFor = null; } return; }
+    if (DEB.layerFor === DEB.tr && DEB.layer) return;
+    if (DEB.layer) map.removeLayer(DEB.layer);
+    const ll = DEB.tr.pts.map(p => [p.lat, p.lon]); DEB.layer = L.polyline(ll, { color: '#ff4fd8', weight: 3, opacity: .9, interactive: false }).addTo(map); DEB.layerFor = DEB.tr;
+    try { map.fitBounds(DEB.layer.getBounds().pad(0.15)); } catch (e) { /* ignore */ }
+  }
+  function debPanel(ctx, ter, fresh) {
+    const kids = [h('div', { class: 'ter-hint' }, 'Load the track that was actually flown (GPX or KML from a GPS / app / EFB, or CSV with lat, lon, alt, time columns). It is compared with the route on the screen: how far off the line, how high against the planned profile, and when each waypoint was reached. The file stays on this device. Times are elapsed time from the first point at ≥ 50 kt; altitude is whatever the file holds (GPS height can differ from pressure altitude).'),
+      h('div', { class: 'ter-act' }, h('button', { class: 'btn', type: 'button', onclick: () => pickFile('.gpx,.kml,.csv,.txt,application/gpx+xml,application/vnd.google-earth.kml+xml,text/csv', (t, fn) => { DEB.err = ''; try { if (t == null) throw new Error('the file could not be read'); DEB.tr = parseTrack(t); DEB.name = fn; } catch (e) { DEB.err = e.message; } ctx.redraw(); }) }, DEB.tr ? 'Load another track…' : 'Load flown track…'),
+        DEB.tr ? h('button', { class: 'btn ghost', type: 'button', onclick: () => { DEB.tr = null; DEB.name = ''; ctx.redraw(); } }, 'Clear track') : null,
+        h('label', { class: 'ter-sm', style: 'display:inline-flex;gap:5px;align-items:center;margin:0' }, 'Altitude in file', h('select', { 'aria-label': 'Altitude unit in the file', onchange: ev => { DEB.unit = ev.target.value; ctx.redraw(); } }, [['auto', 'auto (GPX / KML: m · CSV: ft)'], ['m', 'metres'], ['ft', 'feet']].map(o => h('option', { value: o[0], selected: o[0] === DEB.unit }, o[1])))))];
+    if (DEB.err) kids.push(h('div', { class: 'msg e', role: 'alert' }, DEB.err));
+    let a = null;
+    if (DEB.tr) {
+      a = analyse(DEB.tr, ctx, DEB.unit); const T = DEB.tr, s = a.st, clr = ctx.mountain ? 2000 : 1000, cmp = [];
+      cmp.push(h('div', { class: 'msg i' }, DEB.name + ' · ' + T.kind + ' · ' + T.pts.length + ' points' + (T.hasT ? '' : ' · no times in the file (timing not compared)') + (T.hasAlt ? '' : ' · no altitude in the file') + (s.winned ? ' · only the flight part (≥ 50 kt) is compared' : '') + '.'));
+      cmp.push(h('div', { class: 'msg ' + (s.maxX > 2 ? 'w' : 'i') }, 'Cross-track: largest ' + s.maxX.toFixed(1) + ' NM, average ' + s.meanX.toFixed(2) + ' NM; within 1 NM of the line for ' + Math.round(s.in1) + ' % of the track, within 2 NM for ' + Math.round(s.in2) + ' %' + (s.maxD > 8 ? ' (the track goes up to ' + s.maxD.toFixed(0) + ' NM from the planned route).' : '.')));
+      if (s.altN) cmp.push(h('div', { class: 'msg i' }, 'Altitude vs planned profile: average ' + (s.altMean >= 0 ? '+' : '−') + f0(Math.abs(s.altMean)) + ' ft, largest difference ' + f0(s.altMax) + ' ft; within ± 500 ft for ' + Math.round(s.altIn500) + ' % of the track.'));
+      else if (T.hasAlt) cmp.push(h('div', { class: 'msg i' }, 'Set a cruise altitude in the plan to compare the flown altitude with a planned profile.'));
+      if (T.hasT && fin(s.durMin)) cmp.push(h('div', { class: 'msg ' + (fin(s.planMin) && Math.abs(s.durMin - s.planMin) > 10 ? 'w' : 'i') }, 'Flight time ' + C.fmtDuration(s.durMin) + (fin(s.planMin) ? ' against ' + C.fmtDuration(s.planMin) + ' planned (' + mm(s.durMin - s.planMin) + ')' : '') + '; first point ≥ 50 kt at ' + new Date(s.t0).toISOString().slice(11, 16) + ' UTC.'));
+      const ch = dChart(a, fresh ? ter : null, clr);
+      kids.push(h('div', { class: 'msgs' }, cmp), h('div', { class: 'ter-chart', html: ch.x }), h('div', { class: 'ter-chart', html: ch.a }),
+        h('div', { class: 'ter-key' }, [h('i', { class: 'k-plan' }), 'planned altitude', h('i', { class: 'k-trk' }), 'flown track'].concat(fresh ? [h('i', { class: 'k-land' }), 'terrain read for this route'] : [])));
+      if (a.rows.length) kids.push(h('div', { class: 'nx-tw' }, h('table', { class: 'dt nx-t' }, h('thead', null, h('tr', null, ['WAYPOINT', 'ACTUAL', 'PLANNED', 'DIFF', 'X-TRACK NM', 'ALT ft'].map(x => h('th', null, x)))),
+        h('tbody', null, a.rows.map(r => r.miss ? h('tr', null, h('td', { colspan: 6 }, r.name + ' — not reached by the track')) : h('tr', null, [r.name, C.fmtDuration(r.act), C.fmtDuration(r.plan), mm(r.act - r.plan), (r.x >= 0 ? 'R ' : 'L ') + Math.abs(r.x).toFixed(1), fin(r.alt) ? f0(r.alt) + (fin(r.planAlt) ? ' / ' + f0(r.planAlt) : '') : '—'].map((x, i) => h('td', { class: i ? '' : 'l' }, x))))))));
+      kids.push(h('div', { class: 'ter-sm' }, 'Cross-track is measured to the nearest planned leg (right of course = +). Planned time = NavLog elapsed time; actual time is counted from the first point at ≥ 50 kt, so taxi time does not count. The track is drawn in pink on the map. Training aid — not a flight-data analysis tool.'));
+    }
+    const d = det('deb', 'Debrief · flown track against the plan', kids); d.__a = a; return d;
+  }
+
+  /* ------------------------------------------------------------------ 3 · 3D view */
+  const V3 = { r: null, cv: null, sc: null, cam: null, az: -0.7, pol: 1.0, dist: 10, tgt: null, ex: 6, ok: true, err: '', sig: '', host: null, ctx: null, ps: new Map(), pinch: 0, info: null };
+  V3.init = function () {
+    if (V3.r || !V3.ok) return; if (typeof THREE === 'undefined') { V3.ok = false; V3.err = '3D library not available.'; return; }
+    try {
+      const cv = document.createElement('canvas'); cv.className = 'nx-cv'; cv.setAttribute('aria-label', '3D view of the route and terrain'); cv.setAttribute('role', 'img');
+      V3.r = new THREE.WebGLRenderer({ canvas: cv, antialias: true }); V3.r.setClearColor(0x0b1620, 1); V3.cv = cv; V3.cam = new THREE.PerspectiveCamera(45, 1.6, 0.01, 5000); V3.tgt = new THREE.Vector3();
+      cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); V3.ps.set(e.pointerId, [e.clientX, e.clientY]); V3.pinch = 0; });
+      cv.addEventListener('pointermove', e => {
+        const p = V3.ps.get(e.pointerId); if (!p) return;
+        if (V3.ps.size === 1) { V3.az -= (e.clientX - p[0]) * 0.008; V3.pol = clamp(V3.pol - (e.clientY - p[1]) * 0.008, 0.02, Math.PI / 2 - 0.02); }
+        V3.ps.set(e.pointerId, [e.clientX, e.clientY]);
+        if (V3.ps.size === 2) { const a = [...V3.ps.values()], d = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]); if (V3.pinch) V3.dist = clamp(V3.dist * V3.pinch / d, 0.3, 4000); V3.pinch = d; }
+        V3.draw();
+      });
+      const up = e => { V3.ps.delete(e.pointerId); V3.pinch = 0; }; cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+      cv.addEventListener('wheel', e => { e.preventDefault(); V3.dist = clamp(V3.dist * (e.deltaY > 0 ? 1.12 : 0.89), 0.3, 4000); V3.draw(); }, { passive: false });
+      cv.addEventListener('dblclick', () => { V3.home(); V3.draw(); });
+    } catch (e) { V3.ok = false; V3.r = null; V3.err = 'This device / browser cannot show 3D (WebGL is not available).'; }
+  };
+  V3.draw = function () {
+    if (!V3.r || !V3.sc) return; const w = V3.cv.clientWidth || 0, hh = Math.round(w * 0.62); if (!w) return;
+    if (V3.cv.width !== Math.round(w * (devicePixelRatio || 1)) || V3.cv.height !== Math.round(hh * (devicePixelRatio || 1))) { V3.r.setPixelRatio(devicePixelRatio || 1); V3.r.setSize(w, hh, false); V3.cv.style.height = hh + 'px'; V3.cam.aspect = w / hh; V3.cam.updateProjectionMatrix(); }
+    const sp = Math.sin(V3.pol), c = V3.cam; c.position.set(V3.tgt.x + V3.dist * sp * Math.sin(V3.az), V3.tgt.y + V3.dist * Math.cos(V3.pol), V3.tgt.z + V3.dist * sp * Math.cos(V3.az)); c.lookAt(V3.tgt); V3.r.render(V3.sc, c);
+  };
+  V3.home = function () { V3.az = -0.7; V3.pol = 1.0; V3.dist = (V3.info ? V3.info.span : 10) * 1.15; };
+  V3.want = function () { setTimeout(() => { if (V3.ctx) { V3.build(V3.ctx); V3.draw(); } }, 30); };
+  V3.build = function (ctx) {
+    V3.init(); if (!V3.ok) return; const ter = TERR.state().data, fresh = !!ter && ter.key === TERR.routeKey(ctx.wps, ter.w), a = DEB.tr ? DEB.an : null;
+    const sig = [ctx.wps.map(p => p.lat.toFixed(4) + ',' + p.lon.toFixed(4)).join(';'), fresh ? ter.at : 'x', DEB.tr ? DEB.tr.pts.length + DEB.name + DEB.unit : 'x', V3.ex, ctx.cruise, ctx.segs ? ctx.segs.length : 0, ctx.mountain].join('|');
+    if (sig === V3.sig && V3.sc) return; V3.sig = sig;
+    if (V3.sc) V3.sc.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+    const sc = new THREE.Scene(), wps = ctx.wps, legs = ctx.legs, ex = V3.ex, o0 = wps[0], k0 = Math.cos(o0.lat * Math.PI / 180);
+    const P = (la, lo, ft) => new THREE.Vector3((lo - o0.lon) * k0 * 60, ft / NMFT * ex, -(la - o0.lat) * 60), clr = ctx.mountain ? 2000 : 1000;
+    const cum = [0]; legs.forEach(l => cum.push(cum[cum.length - 1] + (l.distNm > 0 ? l.distNm : 0)));
+    const posAt = s => { let i = 0; while (i < legs.length - 1 && s > cum[i + 1]) i++; const l = legs[i], A = [wps[i].lat, wps[i].lon]; return { ll: C.destination(A, l.tc, C.nm2m(clamp(s - cum[i], 0, l.distNm))), tc: l.tc }; };
+    const altAt = x => { if (ctx.segs && ctx.segs.length) { for (const g of ctx.segs) if (x >= g.s0 - 1e-6 && x <= g.s1 + 1e-6) return g.s1 > g.s0 ? g.alt0 + (g.alt1 - g.alt0) * (x - g.s0) / (g.s1 - g.s0) : g.alt0; return NaN; } return ctx.cruise > 0 ? ctx.cruise : NaN; };
+    sc.add(new THREE.AmbientLight(0xffffff, 0.75)); const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(-1, 2, 1); sc.add(dl);
+    const box = new THREE.Box3(); let top = 0;
+    wps.forEach(p => box.expandByPoint(P(p.lat, p.lon, 0)));
+    if (fresh) {                                           // terrain strip: left / centre / right lanes (older saved data has the centre lane only)
+      const w = ter.w || 0, rows = ter.pts, pos = [], col = [], idx = [], shade = ft => { const t = clamp(ft / 6000, 0, 1); return t < 0.5 ? [0.2 + 0.5 * t, 0.42 + 0.2 * t, 0.2] : [0.5 + 0.4 * (t - 0.5), 0.5 + 0.4 * (t - 0.5), 0.45 + 0.5 * (t - 0.5)]; };
+      rows.forEach(p => {
+        const c = posAt(p.s), lanes = w > 0 ? [[C.destination(c.ll, (c.tc + 270) % 360, C.nm2m(w)), p.l != null ? p.l : p.g], [c.ll, p.g], [C.destination(c.ll, (c.tc + 90) % 360, C.nm2m(w)), p.r != null ? p.r : p.g]] : [[C.destination(c.ll, (c.tc + 270) % 360, C.nm2m(0.3)), p.g], [c.ll, p.g], [C.destination(c.ll, (c.tc + 90) % 360, C.nm2m(0.3)), p.g]];
+        lanes.forEach(q => { const v = P(q[0][0], q[0][1], q[1]); pos.push(v.x, v.y, v.z); const s = shade(q[1]); col.push(s[0], s[1], s[2]); box.expandByPoint(v); top = Math.max(top, v.y); });
+      });
+      for (let i = 0; i + 1 < rows.length; i++) for (let c = 0; c < 2; c++) { const a0 = i * 3 + c, b0 = a0 + 1, a1 = a0 + 3, b1 = b0 + 3; idx.push(a0, a1, b0, b0, a1, b1); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+      sc.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+      const env = rows.map(p => { const c = posAt(p.s); return P(c.ll[0], c.ll[1], p.m + clr); }); sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(env), new THREE.LineBasicMaterial({ color: 0xffb020 }))); env.forEach(v => { top = Math.max(top, v.y); });
+    }
+    const pl = []; for (let k = 0; k <= 160; k++) { const s = cum[cum.length - 1] * k / 160, al = altAt(s); if (fin(al)) { const c = posAt(s); pl.push(P(c.ll[0], c.ll[1], al)); } }
+    pl.forEach(v => { box.expandByPoint(v); top = Math.max(top, v.y); });
+    const sz = box.getSize(new THREE.Vector3()), span = Math.max(sz.x, sz.z, top, 1), rad = span * 0.0035;
+    if (pl.length > 1) sc.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pl), pl.length * 2, rad, 6), new THREE.MeshBasicMaterial({ color: 0x3dd6f5 })));
+    else { const l = []; for (let k = 0; k < wps.length; k++) l.push(P(wps[k].lat, wps[k].lon, 0)); sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(l), new THREE.LineBasicMaterial({ color: 0x3dd6f5 }))); }
+    if (a && a.out.length > 1) { const st = Math.max(1, Math.ceil(a.out.length / 700)), v = a.out.filter((o, i) => i % st === 0).map(o => P(o.lat, o.lon, fin(o.alt) ? o.alt : 0)); v.forEach(q => { box.expandByPoint(q); }); sc.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(v), v.length * 2, rad * 0.9, 5), new THREE.MeshBasicMaterial({ color: 0xff4fd8 }))); }
+    const lab = (txt, v) => { const cn = document.createElement('canvas'); cn.width = 256; cn.height = 64; const x = cn.getContext('2d'); x.font = '700 30px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#eef6ff'; x.strokeStyle = '#0b1620'; x.lineWidth = 6; x.strokeText(txt, 128, 42); x.fillText(txt, 128, 42); const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cn), depthTest: false })); sp.scale.set(span * 0.14, span * 0.035, 1); sp.position.copy(v); sp.position.y += span * 0.04; sc.add(sp); };
+    wps.forEach((p, i) => { const b = P(p.lat, p.lon, 0), t = P(p.lat, p.lon, Math.max(fin(altAt(cum[i])) ? altAt(cum[i]) : 0, 0)); sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([b, t]), new THREE.LineBasicMaterial({ color: 0x8aa0b5 }))); lab(p.name || ('WP' + (i + 1)), t); });
+    const gh = new THREE.GridHelper(span * 1.6, 16, 0x2a3d50, 0x1a2a38); gh.position.set(box.getCenter(new THREE.Vector3()).x, 0, box.getCenter(new THREE.Vector3()).z); sc.add(gh);
+    V3.sc = sc; V3.tgt.copy(box.getCenter(new THREE.Vector3())); V3.tgt.y = Math.min(V3.tgt.y, span * 0.15); V3.cam.far = span * 40; V3.cam.near = span * 0.005; V3.cam.updateProjectionMatrix(); V3.info = { span, fresh, plan: pl.length > 1, track: !!(a && a.out.length > 1) }; V3.home();
+  };
+  function v3Panel(ctx) {
+    V3.ctx = ctx; V3.init();
+    const kids = [];
+    if (!V3.ok) kids.push(h('div', { class: 'msg w' }, V3.err));
+    else {
+      const ter = TERR.state().data, fresh = !!ter && ter.key === TERR.routeKey(ctx.wps, ter.w);
+      kids.push(h('div', { class: 'ter-hint' }, 'Drag to turn, scroll / pinch to zoom, double-click to reset. The brown-green strip is the ground under the route (' + (fresh ? 'read for this route' : 'press “Get terrain” above to read it') + '), the cyan tube is the planned altitude, the amber line is ground + clearance, the pink tube is the flown track (load it under Debrief). Heights are stretched so relief shows: not to scale.'),
+        h('div', { class: 'ter-act' }, h('label', { class: 'ter-sm', style: 'display:inline-flex;gap:6px;align-items:center;margin:0' }, 'Height × ', h('input', { type: 'range', min: 1, max: 15, step: 1, value: V3.ex, 'aria-label': 'Vertical exaggeration', onchange: ev => { V3.ex = +ev.target.value; V3.build(ctx); V3.draw(); }, oninput: ev => { ev.target.nextSibling.textContent = ev.target.value; } }), h('b', null, V3.ex)),
+          h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { V3.home(); V3.draw(); } }, 'Reset view'),
+          h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { V3.az = 0; V3.pol = 0.02; V3.draw(); } }, 'Top'),
+          h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { V3.az = 0; V3.pol = Math.PI / 2 - 0.04; V3.draw(); } }, 'Side')), h('div', { class: 'nx-v3' }, V3.cv));
+    }
+    const d = det('v3', '3D view · route and terrain', kids); if (OPEN.v3 && V3.ok) { V3.build(ctx); requestAnimationFrame(() => V3.draw()); } return d;
+  }
+
+  /* ------------------------------------------------------------------ 4 · live layers (link-outs) */
+  function linksPanel(ctx) {
+    const la = ctx.wps.map(p => p.lat), lo = ctx.wps.map(p => p.lon), c = [(Math.min.apply(null, la) + Math.max.apply(null, la)) / 2, (Math.min.apply(null, lo) + Math.max.apply(null, lo)) / 2], D = ctx.legs.reduce((s, l) => s + (l.distNm > 0 ? l.distNm : 0), 0), z = D > 400 ? 5 : D > 200 ? 6 : D > 100 ? 7 : 8, a = c[0].toFixed(3), o = c[1].toFixed(3);
+    const L = [['ADS-B Exchange', 'live air traffic', 'https://globe.adsbexchange.com/?lat=' + a + '&lon=' + o + '&zoom=' + z], ['NASA FIRMS', 'fires seen by satellite, last 24 h', 'https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;@' + o + ',' + a + ',' + z + 'z'], ['Windy', 'wind, cloud, rain forecast', 'https://www.windy.com/' + a + '/' + o + '?' + a + ',' + o + ',' + z]];
+    return det('links', 'Live layers · open in a browser tab', [h('div', { class: 'ter-hint' }, 'These open other websites at the middle of the route (' + a + ', ' + o + '). Nothing is loaded or sent until you press one; the planner does not embed live data. Needs internet.'),
+      h('div', { class: 'nx-links' }, L.map(x => h('a', { class: 'btn', href: x[2], target: '_blank', rel: 'noopener noreferrer' }, h('b', null, x[0]), h('small', null, x[1]))))]);
+  }
+
+  /* ------------------------------------------------------------------ the panel group */
+  function panel(ctx) {
+    const wrap = h('div', { class: 'nx-wrap' }), ter = TERR.state().data, fresh = !!ter && ter.key === TERR.routeKey(ctx.wps, ter.w);
+    DEB.an = null; const deb = debPanel(ctx, ter, fresh); DEB.an = deb.__a; syncLayer(DEB.an);
+    wrap.append(filePanel(ctx), deb, v3Panel(ctx), linksPanel(ctx)); return wrap;
+  }
+  return { panel, parseTrack, analyse, readPlan, planJson, state: { DEB, V3, OPEN } };
 }());
 
 ;
@@ -22193,8 +22476,8 @@ MODS.nav = (function () {
         .concat(cps.length ? [{ title: 'Critical points — click to centre the map', click: i => map.panTo([cps[i].lat, cps[i].lon]),
           cols: [{ h: 'POINT', k: 'id' }, { h: 'LEG', k: 'leg' }, { h: 'DIST NM', k: 'd' }, { h: 'TO GO NM', k: 'g' }, { h: 'TIME', k: 't' }, { h: 'ETA', k: 'eta' }, { h: 'ALT ft', k: 'alt' }, { h: 'REM kg', k: 'rem' }, { h: 'LAT / LON', k: 'pos', cls: 'l' }, { h: 'MEANING', k: 'note', cls: 'l' }],
           rows: cps.map(c => ({ id: c.id, leg: c.leg, d: fmt(c.distNm, 1), g: fmt(c.toGoNm, 1), t: C.fmtDuration(c.cumMin), eta: c.eta, alt: kA(c.alt), rem: fmt(c.fuelRem, 0), pos: c.lat.toFixed(4) + ', ' + c.lon.toFixed(4), note: c.note, _c: { id: 'c-' + c.id.toLowerCase() } })) }] : []),
-      extra: TERR.panel({ wps, legs, segs, cruise: v.cruiseAlt, mountain: v.mountain, redraw: () => M.touch(),
-        apply: (hi, per) => { M.inputs.terrain.value = hi; M.inputs.terrOvr.value = per.join(', '); ['terrain', 'terrOvr'].forEach(k => M.inputs[k].dispatchEvent(new Event('input'))); toast('Terrain filled in: highest ' + hi.toLocaleString('en-US') + ' ft · by leg ' + per.join(', ')); } }),
+      extra: h('div', null, TERR.panel({ wps, legs, segs, cruise: v.cruiseAlt, mountain: v.mountain, redraw: () => M.touch(),
+        apply: (hi, per) => { M.inputs.terrain.value = hi; M.inputs.terrOvr.value = per.join(', '); ['terrain', 'terrOvr'].forEach(k => M.inputs[k].dispatchEvent(new Event('input'))); toast('Terrain filled in: highest ' + hi.toLocaleString('en-US') + ' ft · by leg ' + per.join(', ')); } }), NAVX.panel({ M, wps, legs, segs, cruise: v.cruiseAlt, mountain: v.mountain, redraw: () => M.touch() })),
       anim: { id: 'nav', params: anim },
       legend: { items: [['#3dd6f5', 'Leg track'], ['#ffb020', 'Selected leg'], ['#4ade80', 'Start', 1], ['#ff5d5d', 'Destination', 1]].concat(cps.map(c => [CPC[c.id], { TOC: 'TOC · top of climb', TOD: 'TOD · top of descent', ETP: 'ETP · equal time point', PNR: 'PNR · point of no return' }[c.id], 1])), wind: { dir: v.wd, spd: v.ws } },
       csv: () => segs ? 'Leg,From,To,Phase,TC,WCA,TH,MH,GS_kt,Dist_NM,ETE_min,Cum_min,ETA,Fuel_kg,Fuel_rem_kg,Safety_alt_ft\n' + segs.map(g => [rows[segs.indexOf(g)].leg, g.from, g.to, g.phase, g.tc.toFixed(1), g.wca.toFixed(1), g.th.toFixed(1), g.mh.toFixed(1), g.gs.toFixed(1), g.distNm.toFixed(2), g.eteMin.toFixed(2), g.cumMin.toFixed(2), g.eta, g.fuel.toFixed(1), Number.isFinite(g.fuelRem) ? g.fuelRem.toFixed(1) : '', legs[g.li].msa || ''].map(x => /[",\n]/.test(String(x)) ? '"' + String(x).replace(/"/g, '""') + '"' : x).join(',')).join('\n')
@@ -23572,6 +23855,27 @@ const CW = (function () {
     return '<div class="cw-tw">' + (b.cap ? '<div class="cw-cap">' + esc(tr(sid, bi + '.cap', b.cap)) + '</div>' : '') + '<table class="cw-tbl"><thead><tr>' + b.head.map((x, ci) => '<th>' + esc(tr(sid, bi + '.h' + ci, x)) + '</th>').join('') + '</tr></thead><tbody>' +
       b.rows.map((r, ri) => '<tr>' + r.map((c, i) => (i === 0 ? '<th scope="row">' : '<td>') + esc(tr(sid, bi + '.' + ri + '.' + i, c)) + (i === 0 ? '</th>' : '</td>')).join('') + '</tr>').join('') + '</tbody></table></div>';
   }
+  /* Read a checklist aloud (browser speech synthesis, the device's own voice, nothing is sent anywhere): "challenge … response" per item, the item being read is lit. */
+  const SAY = {
+    id: null, tok: 0,
+    ok: () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined',
+    stop() { this.tok++; try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } this.id = null; $$('[data-say]', root).forEach(b => { b.setAttribute('aria-pressed', 'false'); b.textContent = '🔊 Read aloud'; }); $$('#cw-doc .cw-cl li.say', root).forEach(li => li.classList.remove('say')); },
+    start(id) {
+      const box = $('[data-clbox="' + id + '"]', root); if (!box) return; this.stop(); const my = this.tok, lis = $$('li', box).filter(li => $('.cw-it', li)); this.id = id;
+      const btn = $('[data-say]', box); if (btn) { btn.setAttribute('aria-pressed', 'true'); btn.textContent = '⏹ Stop reading'; }
+      const say = t => t.replace(/\s+/g, ' ').replace(/\//g, ' slash ').trim();
+      const q = lis.map(li => { const a = ($('.a', li) || {}).textContent || '', r = ($('.r', li) || {}).textContent || '', mem = !!$('em', li); return { li, text: say(a) + (r ? '. ' + say(r) : '') + '.', mem }; });
+      const next = i => {
+        if (my !== SAY.tok) return; $$('li.say', box).forEach(l => l.classList.remove('say'));
+        if (i >= q.length || root.offsetParent === null) { SAY.stop(); return; }
+        const it = q[i], u = new SpeechSynthesisUtterance(it.text); u.lang = /[฀-๿]/.test(it.text) ? 'th-TH' : 'en-US'; u.rate = 0.95;
+        it.li.classList.add('say'); try { it.li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* ignore */ }
+        u.onend = () => setTimeout(() => next(i + 1), 350); u.onerror = () => { if (my === SAY.tok) SAY.stop(); };
+        try { speechSynthesis.speak(u); } catch (e) { SAY.stop(); }
+      };
+      next(0);
+    }
+  };
   function itemHtml(cl, it, i, done, sid, bi) {
     const sysBtn = it.sys ? '<button type="button" class="cw-sys" data-open="' + it.sys + '" title="Show this on the ' + (NAMES[it.sys] || it.sys) + ' schematic" aria-label="Open the ' + (NAMES[it.sys] || it.sys) + ' schematic">⚙</button>' : '';
     return '<li class="' + (it.m ? 'mem ' : '') + (done ? 'done' : '') + '"><button type="button" class="cw-it" role="checkbox" aria-checked="' + !!done + '" data-cl="' + cl.id + '" data-i="' + i + '">' +
@@ -23582,6 +23886,7 @@ const CW = (function () {
     const hasMem = b.items.some(x => x.m);
     return '<div class="cw-cl' + (b.emerg ? ' emerg' : '') + '" data-clbox="' + b.id + '"><div class="cw-clh"><b>' + esc(b.title ? tr(sec.id, bi + '.title', b.title) : sec.title) + '</b><span class="cw-prog" data-prog>' + cnt + ' / ' + n + '</span>' +
       (hasMem ? '<button type="button" class="btn sm pri" data-prac="' + b.id + '" title="Practise the memory items of this emergency">Practise boldface</button>' : '') +
+      (SAY.ok() ? '<button type="button" class="btn sm ghost" data-say="' + b.id + '" aria-pressed="false" title="Read this checklist aloud, item by item (your device\'s voice)">🔊 Read aloud</button>' : '') +
       '<button type="button" class="btn sm ghost" data-reset="' + b.id + '">Reset</button></div><div class="cw-bar"><i style="width:' + (100 * cnt / n) + '%"></i></div><ol>' + b.items.map((it, i) => itemHtml(b, it, i, done[i], sec.id, bi)).join('') + '</ol></div>';
   }
   /* scanned figure of the 501 Sqn Phase Manual (src/figs/ph_*.png, built into window.PHASE_FIGS) */
@@ -23733,6 +24038,7 @@ const CW = (function () {
     return 'AU-23A Courseware — Survey\n' + new Date().toISOString().slice(0, 10) + (v.who ? '\nName / rank: ' + v.who : '') + '\n\n' + SURVEY.map(q => (sc[q[0]] || '–') + ' / 5   ' + q[1]).join('\n') + '\n\nMost helpful:\n' + (v.best || '–') + '\n\nTo improve or add:\n' + (v.improve || '–') + '\n';
   }
   function renderDoc(keep) {
+    if (SAY.id) SAY.stop();
     const id = P.les, l = LES[id];
     const st = $('#cw-doc').scrollTop;
     $('#cw-doc').innerHTML = id === 'summary' ? summaryDoc() : id === 'survey' ? surveyDoc() : id === 'exam' ? examDoc() : l.test ? testDoc(l) : l.tool ? toolDoc(l) : lessonDoc(l);
@@ -23780,6 +24086,7 @@ const CW = (function () {
     if (it) {
       const id = it.dataset.cl, i = +it.dataset.i; const a = (P.checks[id] = P.checks[id] || []); a[i] = !a[i]; save(); refreshChecklist(id); return;
     }
+    const sy = ev.target.closest('[data-say]'); if (sy) { if (SAY.id === sy.dataset.say) SAY.stop(); else SAY.start(sy.dataset.say); return; }
     const rs = ev.target.closest('[data-reset]'); if (rs) { P.checks[rs.dataset.reset] = []; save(); refreshChecklist(rs.dataset.reset); return; }
     const go = ev.target.closest('[data-go]');
     if (go) {
@@ -33273,6 +33580,7 @@ const App = (function () {
       <li><code>Esc</code> cancels a drawing/pick mode. Inputs and geometry are remembered in this browser.</li></ul>
       <ul><li><b>Module 7 · Interactive courseware & Flight Manual</b> is a full-screen split-screen workspace (the map is hidden) holding the whole AU-23(A) flight manual (T.O. Sections I-VI) in ten chapters: Systems, Engine (oil, propeller, ignition, instruments), Airframe, Controls (gear, brakes, flaps, trims), Avionics (EFD1000, IFD440, radios, ELT), Equipment (lighting, armament), Normal procedures, Emergency procedures, Limits and Performance. Use the search box to find any word in the manual, the “Go to” list to jump to a section, and tick the checklist items as you go. Right: <b>twelve systems in flight-manual order</b> — Engine &amp; start, Oil, Propeller, Fuel, Electrical, Bleed air, Landing gear &amp; brakes, Wing flaps, Flight controls &amp; trim, Pitot-static &amp; stall warning, Avionics, Lighting &amp; armament — each one a button-free <b>step-by-step flow</b>: the whole system redrawn as one connected diagram with live flow stays at the top, a camera in it follows the current step (a small inset shows where on the whole system), and below it the numbered steps are cards you read by scrolling — each says what the T.O. says about that part, its state in one typical configuration (named above the diagram) and, where the unit's IPB has it, its IPB part numbers. The step under the diagram is lit in the diagram; when nothing has been touched for about 7 seconds the steps play on by themselves, slowly, and loop (any scroll, touch or key pauses them). Under the steps, scroll on to read the other sections: <b>Part view</b> (a schematic drawing of the working principle of every part that plays its own workflow while it is on the screen), the <b>IPB parts</b> figures and parts lists (the parts of the current step are marked), the cockpit panel, a <b>2.5D</b> picture of the system laid out inside the airframe (drag to move it, scroll to zoom; its part for the current step is circled) and the cockpit indications. The <b>Aircraft 3D</b> tab shows every system at once. Checklist items in the manual open the matching system (⚙). The <b>Aircraft 3D</b> tab keeps its scenario presets. The 2.5D / 3D drawings are schematic, not to scale (the airframe follows the T.O. 1U-23(A)A-2 three-view: high wing, fixed tail-wheel gear forward of the wing, a single exhaust pipe on the lower left of the nose); the systems added after the original four (bleed air onward) are snapshot models built from the flight manual text and T.O. 1U-23(A)A-2 where it has the chapter — the unit's IPB has no figures for them. The oil, propeller, fuel and electrical panes also have a <b>cockpit-panel</b> drawing under the diagram (LH systems panel, engine control panel, armament panel, fuel-valve lever, OIL COOLER knob — real toggles laid out like the flight-manual figures) whose lines and lamps follow the switch / lever logic (two-stage T-handle, throttle detents, beta, feather → start position). The oil system also shows the engine-manual figure (T.O. 1U-23(A)-A-14, Fig 15) <b>redrawn as a clean vector diagram</b> with animated live oil flow and 26 clickable parts (a “Compare with scan” button overlays the original) — zoom, or pick a part from the list. The <b>IPB parts</b> tab of the Oil pane (and of the Fuel pane: Figs 4, 54-60A wing tank, foam, fuselage lines, collector and sump tanks, engine fuel lines) shows the unit's Illustrated Parts Breakdown (T.O. 1U-23(A)A-4, Figs 46 and 51-54: oil system, oil cooler, unfeathering pump, pressure-gage lines, engine accessories): click an index number on the drawing for its part number, units per assembly, usage (A = before MSN 2073, B = MSN 2073 and subsequent) and attaching parts, or search a part number. Other systems will get their real figures one at a time, Emergency Boldface flashcards, and a memory-item quiz scored on order (each distractor costs a point). Progress is kept in this browser. Memory items are the capitalised lines of T.O. Section III. Text is condensed from the scanned T.O. — items marked “verify” were unclear in the scan; the printed T.O. governs.</li></ul>
       <ul><li><b>Module 11 · Weight &amp; Balance</b> (second tab, key <code>W</code>) is a full-screen calculator that works as the flight manual does: moment = weight × arm, C.G. arm = Σ moment ÷ Σ weight, % MAC = (arm − 118.11) ÷ 74.803 × 100, checked against the Figure 4-1 envelope and the 6,100 lb limit for the zero-fuel, ramp, take-off and landing conditions (fuel burn-off drawn on the chart). It also checks the Figure 4-2 station loading (350 / 575 / 600 / 575 / 350 lb, 700 lb per wing, two stores on one wing and none on the other prohibited), uses the §I weights (basic empty, crew 200 lb, oil 12 lb, fuel 1,060 lb at 6.5 lb/gal) and the Figure 6-1 store weights. <b>The arms of the seats, tanks, cabin and pylons are not in the T.O.</b>: the pre-filled arms are marked training placeholders — enter the arms and the weighed basic weight from the aircraft's own record. Two more views in the same tab: <b>Fuel · BINGO · JOKER</b> (RTAF ข้อ ๑๙ and T.O. §VI) and <b>T.O. Charts</b> — the performance graphs of T.O. Figs 6-7 to 6-16 (climb, long range cruise 96 % / 90 % RPM, loiter) shown as the <b>original scans</b> with only the reading lines drawn over them (nothing is redrawn; zoom, pan and drag to set the weight), a look-up by weight / altitude / drag index, the drag index from the stores (Fig 6-1), and a button to send the reading to the fuel plan. Readings are estimates (typically within 1–2 % of the T.O. sample mission, 3 % at worst): the printed T.O. remains the authority.</li></ul>
+      <ul><li><b>Module 1 · Navigation extras</b> (under the NavLog, each panel folded until opened): <b>Terrain under the route</b> reads the ground height along the route from an online elevation service (button, internet needed; the route coordinates are sent to open-meteo.com, or open-elevation.com if that fails), draws it with the planned altitude, marks where the plan is below ground + 1,000 ft (2,000 ft in mountains) and can fill <i>Highest terrain</i> and <i>Terrain by leg</i> for you. <b>Plan file</b> saves the route and every setting to a small .json file and opens it again. <b>Debrief</b> loads a flown track (GPX, KML or CSV) and compares it with the plan: cross-track error, altitude against the profile, time over each waypoint, the track shown on the map (the file stays on the device). <b>3D view</b> shows the terrain strip, the planned path and the flown track with stretched heights. <b>Live layers</b> are links to ADS-B Exchange, NASA FIRMS and Windy opened at the middle of the route. Ground model 90 m, no obstacles — planning and training aid only. In the courseware every checklist has a <b>Read aloud</b> button (the device's own voice).</li></ul>
       <ul><li><b>Module 13 · Mission Card</b> (next to the Briefing, key <code>M</code>) makes the squadron's two-sided <i>Mission Card</i> and a <i>Minimap</i> for printing on A4: two A5 cards side by side on a landscape A4 (left = aircraft 1, right = aircraft 2, or a copy of aircraft 1), a dashed cut line down the middle and a circle with tick marks at the middle of each card's edge as a guide for the hole punch (Checklist binder). Everything is pulled from the plan — call sign, area, IFF and mission from the Briefing, take-off time from Navigation (STEP → START → TAXI → TAKEOFF 10 minutes apart), fuel / BINGO / JOKER and weights, % MAC, C.G., stall, rotation and take-off / landing distances from Weight &amp; Balance (live only for the aircraft loaded there), airfields from ICAO codes in the route — and every field can be typed over (typed values win). Minimap: route points from Navigation or typed, Esri satellite / topo / street (internet needed) or a drawn map, course and distance on every leg, range rings, a data box for each airfield from the AIP directory (drag to move), custom boxes such as OSCAR / FOCAL, printed two per A4 portrait with a cut line (the map is turned 90° to fill a card when the route runs north–south). Only airfields whose coordinates the app knows (squadron KML, seeds, your own points) are placed automatically; for others type lat / lon. Stall speed uses the selected flap setting; fuel is shown in the chosen unit.</li></ul>
       <ul><li><b>Module 12 · Briefing</b> (next to the courseware, key <code>B</code>) builds the squadron briefing from the <i>Briefing Guide</i> (501 Sqn, updated 22 Oct 2568). Step 1: choose what is flown — one of the five standard guides (General, Instrument, Navigation / Night, Formation, Short), a mission item (photo, FLIR, M-197, flare LUU-2, loud speaker, colored smoke, towing, leaflets, hygroscopic / rain making, air delivery) or the Debriefing guide. Step 2: the outline of the guide with the guide's own explanation under every item; tick which tabs feed it — <b>Navigation</b> (route, check points, MSA, PNR / critical points, fuel, ETD / ETA), <b>Weight &amp; Balance</b> (crew, total weight, % MAC, envelope check), its <b>Summary</b> (stall speeds, V LO, take-off and landing distances), its <b>Fuel plan</b> (JOKER / BINGO) and the <b>mission tab</b> (CP / IP / target coordinates, time over target) — plus the Z / ICT time hack and the mission-objective table (training or check values). Pulled figures are shown in coloured blocks with their source and are read from the tabs when you press <i>Read again</i>; type your own text under any item. Print / save as PDF, copy as text or download .txt. What you type is remembered per callsign. Nothing is calculated in this tab; the guide's items 17–18 are replaced by the mission item (or kept and the mission added after them — your choice).</li></ul>
       <ul><li><b>Module 2 · photo reconnaissance</b> follows the squadron's <b>Photo Reconnaissance Procedures</b> (501 Sqn Phase Manual, 2024). Choose the mission type: <i>AP</i> survey lines (vertical camera, NIKON D750 / H4D presets), <i>FLIR known target</i> (IP at 8 NM, straight run, right orbit about the target, range calls 8 … 2 NM), <i>FLIR moving target</i> (parallel pass, turn toward the target when the camera azimuth passes 135°, printed limits range 2,000-7,000 m and depression 10-40°) or a <i>search pattern</i> (rectangular parallel / creeping, sector, expanding square). Study it in Module 7 (chapter <i>Photo recon</i>: display data, preparation, crew calls, patterns, HIPP / F3EA, tracking, abnormal procedures) and practise with the <i>Phase drill</i> tab (crew calls and the printed limits).</li></ul>
