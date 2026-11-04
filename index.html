@@ -2724,6 +2724,21 @@ textarea.mcd-in{resize:vertical}
   #mcd-print .mc-sheet,#mcd-print .mm-sheet{transform:none!important}
 }
 
+/* ---- terrain under the route (Navigation) ---- */
+.ter{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:8px 10px;background:#0a121a}
+.ter-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.ter-h h4{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.ter-ctl{display:flex;gap:6px;align-items:center}.ter-ctl select{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:5px 6px;font-size:12px;color:var(--ink)}
+.ter-hint,.ter-sm{font-size:11.5px;line-height:1.45;color:var(--mute)}.ter-sm{margin-top:6px}
+.ter-chart{margin:6px 0 4px}.ter-svg{display:block;width:100%;height:auto}
+.ter-tx{font-size:9.5px;fill:var(--mute);font-family:var(--font)}.ter-ax{font-weight:700}.ter-wn{fill:var(--ink);font-size:9px}
+.ter-gl{stroke:var(--line);stroke-width:1}.ter-wp{stroke:var(--dim);stroke-width:.8;stroke-dasharray:2 3}
+.ter-land{fill:#8a6a3a;fill-opacity:.55;stroke:#b08a4f;stroke-width:1}.ter-gnd{stroke:#d9b370;stroke-width:1;opacity:.8}
+.ter-env{stroke:var(--amber);stroke-width:1.3;stroke-dasharray:5 3}.ter-plan{stroke:var(--cyan);stroke-width:2}.ter-bad{fill:var(--red)}
+.ter-key{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:11px;color:var(--mute)}.ter-key i{display:inline-block;width:14px;height:8px;border-radius:2px;margin-right:2px}
+.ter-key .k-land{background:#8a6a3a}.ter-key .k-env{background:none;border-top:2px dashed var(--amber);height:0}.ter-key .k-plan{background:var(--cyan);height:3px}.ter-key .k-bad{background:var(--red);width:8px;border-radius:50%;height:8px}
+.ter-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+
 </style>
 </head>
 <body class="m-0 overflow-hidden bg-tac-bg font-tac text-slate-200">
@@ -21929,6 +21944,135 @@ const stamp = () => { const d = new Date(); return d.getUTCFullYear() + p2(d.get
 
 ;
 /* ==========================================================================
+   TERRAIN UNDER THE ROUTE  (Navigation Flight)
+   Samples the route every ~1 NM (at most 120 samples, three lanes: centre line and ± the corridor half-width), asks an
+   online elevation service for the ground height of every sample, and draws terrain / terrain + clearance / the planned
+   altitude profile along the route. The highest terrain of the whole route and of each leg can be copied into the
+   planner's "Highest terrain" and "Terrain by leg" fields (safety altitude then follows the usual rule).
+   - Online only, started by a button: the sampled coordinates are sent to the elevation service (stated on the panel).
+   - Source 1 Open-Meteo elevation (Copernicus DEM 90 m, no key); source 2 Open-Elevation (SRTM 90 m) if the first fails.
+   - Planning aid only: 90 m ground model, no obstacles (masts, towers), samples ~1 NM apart can miss a narrow peak.
+   - The last result is kept in localStorage (per callsign) so it can still be read offline for the same route.
+   ========================================================================== */
+const TERR = (function () {
+  const KEY = 'au23a.terrain.v1', FT = 3.28084, MAXS = 120;
+  const SRC = [
+    { n: 'Open-Meteo · Copernicus DEM 90 m', per: 100, get: async (pts, sig) => {
+      const r = await fetch(TERR.url1 + '?latitude=' + pts.map(p => p[0].toFixed(5)).join(',') + '&longitude=' + pts.map(p => p[1].toFixed(5)).join(','), { signal: sig });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); if (!j || !Array.isArray(j.elevation) || j.elevation.length !== pts.length) throw new Error('unexpected reply');
+      return j.elevation;
+    } },
+    { n: 'Open-Elevation · SRTM 90 m', per: 200, get: async (pts, sig) => {
+      const r = await fetch(TERR.url2, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ locations: pts.map(p => ({ latitude: +p[0].toFixed(5), longitude: +p[1].toFixed(5) })) }), signal: sig });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); if (!j || !Array.isArray(j.results) || j.results.length !== pts.length) throw new Error('unexpected reply');
+      return j.results.map(x => x.elevation);
+    } }
+  ];
+  let S = { w: 2, data: null }, loaded = false, busy = false, err = '';
+  const load = () => { loaded = true; try { const j = JSON.parse(localStorage.getItem(KEY)); if (j && typeof j === 'object') S = Object.assign(S, j); } catch (e) { /* ignore */ } };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } };
+  const st = () => { if (!loaded) load(); return S; };
+  const fin = Number.isFinite, f0 = n => Math.round(n).toLocaleString('en-US');
+  const routeKey = (wps, w) => w + '|' + wps.map(p => p.lat.toFixed(4) + ',' + p.lon.toFixed(4)).join(';');
+
+  /* where to ask: along every leg, centre line + two lanes at ± w NM */
+  function sites(legs, wps, w) {
+    const D = legs.reduce((a, l) => a + (l.distNm > 0 ? l.distNm : 0), 0), step = Math.max(1, D / MAXS), out = []; let cum = 0;
+    legs.forEach((l, i) => {
+      if (!(l.distNm > 0.05)) { return; }
+      const A = [wps[i].lat, wps[i].lon], n = Math.max(1, Math.ceil(l.distNm / step)), last = i === legs.length - 1;
+      for (let k = 0; k <= n; k++) {
+        if (k === n && !last) break;
+        const d = l.distNm * k / n, c = C.destination(A, l.tc, C.nm2m(d));
+        out.push({ s: cum + d, li: i, ll: [c, w > 0 ? C.destination(c, (l.tc + 270) % 360, C.nm2m(w)) : null, w > 0 ? C.destination(c, (l.tc + 90) % 360, C.nm2m(w)) : null].filter(Boolean) });
+      }
+      cum += l.distNm;
+    });
+    return { D, list: out };
+  }
+  async function ask(points) {
+    let last = null;
+    for (const s of SRC) {
+      try {
+        const out = [];
+        for (let i = 0; i < points.length; i += s.per) {
+          const ac = new AbortController(), t = setTimeout(() => ac.abort(), 20000);
+          try { out.push.apply(out, await s.get(points.slice(i, i + s.per), ac.signal)); } finally { clearTimeout(t); }
+        }
+        return { elev: out, src: s.n };
+      } catch (e) { last = e; }
+    }
+    throw last || new Error('no elevation service');
+  }
+  async function fetchRoute(ctx) {
+    if (busy) return; const s = st(); busy = true; err = ''; ctx.redraw();
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('offline');
+      const sm = sites(ctx.legs, ctx.wps, s.w), flat = []; sm.list.forEach(q => q.ll.forEach(p => flat.push(p)));
+      if (!flat.length) throw new Error('no route');
+      const res = await ask(flat); let k = 0;
+      const pts = sm.list.map(q => { const e = q.ll.map(() => { const x = res.elev[k++]; return fin(x) ? x * FT : 0; }); return { s: +q.s.toFixed(2), li: q.li, g: Math.round(e[0]), m: Math.round(Math.max.apply(null, e)) }; });
+      s.data = { key: routeKey(ctx.wps, s.w), w: s.w, D: sm.D, at: new Date().toISOString(), src: res.src, pts, names: ctx.wps.map(p => p.name), cum: ctx.legs.reduce((a, l) => (a.push(a[a.length - 1] + (l.distNm > 0 ? l.distNm : 0)), a), [0]) };
+      save();
+    } catch (e) { err = e && e.message === 'offline' ? 'No internet connection — terrain lookup needs to be online.' : 'Terrain lookup failed (' + (e && e.message ? e.message : 'error') + '). Check the connection and try again.'; }
+    busy = false; ctx.redraw();
+  }
+
+  /* ---- drawing ---- */
+  function chart(d, altAt, clr) {
+    const W = 640, H = 230, m = { l: 48, r: 10, t: 14, b: 26 }, pts = d.pts, D = Math.max(d.D, 1);
+    const alts = pts.map(p => altAt(p.s)).filter(fin), top0 = Math.max(1000, Math.max.apply(null, pts.map(p => p.m + clr).concat(alts)));
+    const st1 = top0 > 14000 ? 4000 : top0 > 8000 ? 2000 : top0 > 4000 ? 1000 : 500, ymax = Math.ceil(top0 / st1) * st1;
+    const X = s => m.l + (W - m.l - m.r) * s / D, Y = a => H - m.b - (H - m.t - m.b) * Math.max(0, a) / ymax;
+    let s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" class="ter-svg" role="img" aria-label="Terrain profile along the route">';
+    for (let a = 0; a <= ymax; a += st1) s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(a) + '" y2="' + Y(a) + '" class="ter-gl"/><text x="' + (m.l - 5) + '" y="' + (Y(a) + 3.5) + '" text-anchor="end" class="ter-tx">' + f0(a) + '</text>';
+    const xs = D > 200 ? 50 : D > 80 ? 20 : D > 30 ? 10 : 5;
+    for (let x = 0; x <= D; x += xs) s += '<text x="' + X(x) + '" y="' + (H - m.b + 13) + '" text-anchor="middle" class="ter-tx">' + x + '</text>';
+    s += '<text x="' + (W / 2) + '" y="' + (H - 3) + '" text-anchor="middle" class="ter-tx ter-ax">NM along route</text><text transform="translate(11 ' + (H / 2) + ') rotate(-90)" text-anchor="middle" class="ter-tx ter-ax">ft MSL</text>';
+    s += '<polygon class="ter-land" points="' + X(pts[0].s) + ',' + Y(0) + ' ' + pts.map(p => X(p.s).toFixed(1) + ',' + Y(p.m).toFixed(1)).join(' ') + ' ' + X(pts[pts.length - 1].s) + ',' + Y(0) + '"/>';
+    s += '<polyline class="ter-gnd" fill="none" points="' + pts.map(p => X(p.s).toFixed(1) + ',' + Y(p.g).toFixed(1)).join(' ') + '"/>';
+    s += '<polyline class="ter-env" fill="none" points="' + pts.map(p => X(p.s).toFixed(1) + ',' + Y(p.m + clr).toFixed(1)).join(' ') + '"/>';
+    const pl = pts.filter(p => fin(altAt(p.s)));
+    if (pl.length) s += '<polyline class="ter-plan" fill="none" points="' + pl.map(p => X(p.s).toFixed(1) + ',' + Y(altAt(p.s)).toFixed(1)).join(' ') + '"/>' + pl.filter(p => altAt(p.s) < p.m + clr).map(p => '<circle class="ter-bad" r="2.6" cx="' + X(p.s).toFixed(1) + '" cy="' + Y(altAt(p.s)).toFixed(1) + '"/>').join('');
+    let lastX = -99; d.cum.forEach((c, i) => { const x = X(c); s += '<line x1="' + x + '" x2="' + x + '" y1="' + m.t + '" y2="' + (H - m.b) + '" class="ter-wp"/>'; if (x - lastX > 34) { s += '<text x="' + x + '" y="' + (m.t - 3) + '" text-anchor="middle" class="ter-tx ter-wn">' + String(d.names[i] || '').replace(/[<>&"]/g, '').slice(0, 8) + '</text>'; lastX = x; } });
+    const bw = Math.max(2, (W - m.l - m.r) / pts.length);
+    pts.forEach(p => { const a = altAt(p.s); s += '<rect x="' + (X(p.s) - bw / 2).toFixed(1) + '" y="' + m.t + '" width="' + bw.toFixed(1) + '" height="' + (H - m.t - m.b) + '" fill="transparent"><title>NM ' + p.s.toFixed(1) + ' · terrain ' + f0(p.m) + ' ft (centre ' + f0(p.g) + ')' + (fin(a) ? ' · plan ' + f0(a) + ' ft · clearance ' + f0(a - p.m) + ' ft' : '') + '</title></rect>'; });
+    return s + '</svg>';
+  }
+
+  /* ---- the panel (returned as res.extra of the Navigation module) ---- */
+  function panel(ctx) {
+    const s = st(), d = s.data, fresh = !!d && d.key === routeKey(ctx.wps, s.w), clr = ctx.mountain ? 2000 : 1000;
+    const altAt = x => {
+      if (ctx.segs && ctx.segs.length) { for (const g of ctx.segs) if (x >= g.s0 - 1e-6 && x <= g.s1 + 1e-6) return g.s1 > g.s0 ? g.alt0 + (g.alt1 - g.alt0) * (x - g.s0) / (g.s1 - g.s0) : g.alt0; return NaN; }
+      return ctx.cruise > 0 ? ctx.cruise : NaN;
+    };
+    const sel = h('select', { 'aria-label': 'Corridor half-width', onchange: ev => { s.w = +ev.target.value; save(); ctx.redraw(); } }, [0, 1, 2, 5].map(w => h('option', { value: w, selected: w === s.w }, w === 0 ? 'centre line only' : '± ' + w + ' NM')));
+    const btn = h('button', { class: 'btn', type: 'button', disabled: busy, onclick: () => fetchRoute(ctx) }, busy ? 'Fetching…' : (d ? 'Refresh terrain' : 'Get terrain'));
+    const body = [];
+    if (err) body.push(h('div', { class: 'msg e', role: 'alert' }, err));
+    if (!d) body.push(h('div', { class: 'ter-hint' }, 'Press “Get terrain” to read the ground height under this route (needs internet). The sampled route coordinates are sent to the elevation service, open-meteo.com (or open-elevation.com if it is down).'));
+    else {
+      if (!fresh) body.push(h('div', { class: 'msg w' }, 'The route or the corridor changed since this profile was read (' + d.at.slice(0, 16).replace('T', ' ') + ' UTC) — press “Refresh terrain”. The chart below shows the old route.'));
+      const hi = d.pts.reduce((a, p) => (p.m > a.m ? p : a), d.pts[0]), minCl = fresh ? d.pts.reduce((a, p) => { const al = altAt(p.s); return fin(al) && al - p.m < a.c ? { c: al - p.m, p } : a; }, { c: Infinity, p: null }) : { c: Infinity, p: null };
+      const perLeg = ctx.legs.map((l, i) => { const v = d.pts.filter(p => p.li === i).map(p => p.m); return v.length ? Math.ceil(Math.max.apply(null, v) / 100) * 100 : 0; });
+      const msgs = [h('div', { class: 'msg i' }, 'Highest ground in the ' + (d.w ? '± ' + d.w + ' NM corridor' : 'centre line') + ': ' + f0(hi.m) + ' ft at NM ' + hi.s.toFixed(1) + ' (leg ' + (hi.li + 1) + ').')];
+      if (fresh && minCl.p) msgs.push(h('div', { class: 'msg ' + (minCl.c < clr ? 'w' : 'i') }, 'Smallest clearance of the planned profile above that ground: ' + f0(minCl.c) + ' ft at NM ' + minCl.p.s.toFixed(1) + (minCl.c < clr ? ' — below the ' + f0(clr) + ' ft planning clearance (' + (ctx.mountain ? 'mountainous area' : 'normal') + ').' : '.')));
+      else if (fresh) msgs.push(h('div', { class: 'msg i' }, 'Set a cruise altitude to compare the planned profile with this ground.'));
+      body.push(h('div', { class: 'msgs' }, msgs), h('div', { class: 'ter-chart', html: chart(d, fresh ? altAt : () => NaN, clr) }),
+        h('div', { class: 'ter-key' }, [h('i', { class: 'k-land' }), 'highest ground in corridor', h('i', { class: 'k-env' }), '+ ' + f0(clr) + ' ft clearance', h('i', { class: 'k-plan' }), 'planned altitude', h('i', { class: 'k-bad' }), 'below clearance']),
+        h('div', { class: 'ter-act' }, h('button', { class: 'btn', type: 'button', disabled: !fresh, onclick: () => { ctx.apply(Math.ceil(hi.m / 100) * 100, perLeg); } }, 'Use in planner'), h('span', { class: 'ter-sm' }, 'fills “Highest terrain” (' + f0(Math.ceil(hi.m / 100) * 100) + ' ft) and “Terrain by leg” (' + perLeg.map(f0).join(', ') + ')')),
+        h('div', { class: 'ter-sm' }, 'Source: ' + d.src + ' · ' + d.pts.length + ' samples × ' + (d.w ? 3 : 1) + ' lanes · read ' + d.at.slice(0, 16).replace('T', ' ') + ' UTC. Planning aid only — 90 m ground model, no obstacles (masts, towers); a narrow peak between samples can be missed. Check charts and NOTAM.'));
+    }
+    return h('div', { class: 'ter' }, h('div', { class: 'ter-h' }, h('h4', null, 'Terrain under the route · online'), h('div', { class: 'ter-ctl' }, sel, btn)), body);
+  }
+  return { panel, sites, routeKey, state: st, url1: 'https://api.open-meteo.com/v1/elevation', url2: 'https://api.open-elevation.com/api/v1/lookup' };
+}());
+
+;
+/* ==========================================================================
    APP — part 2a: modules 1-3 (Navigation, Aerial photography, Aerial broadcasting)
    ========================================================================== */
 const MODS = {};
@@ -22049,6 +22193,8 @@ MODS.nav = (function () {
         .concat(cps.length ? [{ title: 'Critical points — click to centre the map', click: i => map.panTo([cps[i].lat, cps[i].lon]),
           cols: [{ h: 'POINT', k: 'id' }, { h: 'LEG', k: 'leg' }, { h: 'DIST NM', k: 'd' }, { h: 'TO GO NM', k: 'g' }, { h: 'TIME', k: 't' }, { h: 'ETA', k: 'eta' }, { h: 'ALT ft', k: 'alt' }, { h: 'REM kg', k: 'rem' }, { h: 'LAT / LON', k: 'pos', cls: 'l' }, { h: 'MEANING', k: 'note', cls: 'l' }],
           rows: cps.map(c => ({ id: c.id, leg: c.leg, d: fmt(c.distNm, 1), g: fmt(c.toGoNm, 1), t: C.fmtDuration(c.cumMin), eta: c.eta, alt: kA(c.alt), rem: fmt(c.fuelRem, 0), pos: c.lat.toFixed(4) + ', ' + c.lon.toFixed(4), note: c.note, _c: { id: 'c-' + c.id.toLowerCase() } })) }] : []),
+      extra: TERR.panel({ wps, legs, segs, cruise: v.cruiseAlt, mountain: v.mountain, redraw: () => M.touch(),
+        apply: (hi, per) => { M.inputs.terrain.value = hi; M.inputs.terrOvr.value = per.join(', '); ['terrain', 'terrOvr'].forEach(k => M.inputs[k].dispatchEvent(new Event('input'))); toast('Terrain filled in: highest ' + hi.toLocaleString('en-US') + ' ft · by leg ' + per.join(', ')); } }),
       anim: { id: 'nav', params: anim },
       legend: { items: [['#3dd6f5', 'Leg track'], ['#ffb020', 'Selected leg'], ['#4ade80', 'Start', 1], ['#ff5d5d', 'Destination', 1]].concat(cps.map(c => [CPC[c.id], { TOC: 'TOC · top of climb', TOD: 'TOD · top of descent', ETP: 'ETP · equal time point', PNR: 'PNR · point of no return' }[c.id], 1])), wind: { dir: v.wd, spd: v.ws } },
       csv: () => segs ? 'Leg,From,To,Phase,TC,WCA,TH,MH,GS_kt,Dist_NM,ETE_min,Cum_min,ETA,Fuel_kg,Fuel_rem_kg,Safety_alt_ft\n' + segs.map(g => [rows[segs.indexOf(g)].leg, g.from, g.to, g.phase, g.tc.toFixed(1), g.wca.toFixed(1), g.th.toFixed(1), g.mh.toFixed(1), g.gs.toFixed(1), g.distNm.toFixed(2), g.eteMin.toFixed(2), g.cumMin.toFixed(2), g.eta, g.fuel.toFixed(1), Number.isFinite(g.fuelRem) ? g.fuelRem.toFixed(1) : '', legs[g.li].msa || ''].map(x => /[",\n]/.test(String(x)) ? '"' + String(x).replace(/"/g, '""') + '"' : x).join(',')).join('\n')
