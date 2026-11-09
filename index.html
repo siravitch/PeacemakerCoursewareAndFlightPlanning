@@ -21609,6 +21609,152 @@ BASES['Offline (embedded)'] = (function () {
   grp.options = { attribution: 'Offline map: Natural Earth 1:10 m (public domain)' };
   return grp;
 }());
+/* JOG A (Thailand) base map — the chart is the user's own KML file (GroundOverlay images). It is read in the browser (never uploaded), the images are kept in
+   IndexedDB on this device and only the ones in view are drawn. The embedded offline map sits underneath, so areas outside the chart are not blank. */
+const JOG_KEY = 'JOG A (Thailand)';
+BASES[JOG_KEY] = (function () {
+  const grp = L.layerGroup(), under = BASES['Offline (embedded)'];
+  map.createPane('jog').style.zIndex = 205;                        // above the base tiles, below routes and aeronautical overlays
+  let meta = [], info = null, shown = new Map(), want = new Set(), op = 1, busy = false, dbp = null, ui = null;   // meta rows: [id, south, west, north, east, url|0]
+  const db = () => dbp || (dbp = new Promise((ok, no) => {
+    if (!window.indexedDB) return no(new Error('IndexedDB is not available in this browser'));
+    const r = indexedDB.open('au23a-jog', 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('meta'); r.result.createObjectStore('img'); };
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  }));
+  const rq = r => new Promise((ok, no) => { r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  const txDone = t => new Promise((ok, no) => { t.oncomplete = ok; t.onerror = t.onabort = () => no(t.error || new Error('storage failed')); });
+  const mb = n => (n / 1048576).toFixed(n > 1e8 ? 0 : 1) + ' MB';
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  async function loadMeta() {
+    try { const d = await db(), t = d.transaction('meta'); meta = (await rq(t.objectStore('meta').get('list'))) || []; info = (await rq(t.objectStore('meta').get('info'))) || null; }
+    catch (e) { meta = []; info = null; }
+    status(); draw();
+  }
+  function bounds() {
+    if (!meta.length) return null; let s = 90, w = 180, n = -90, e = -180;
+    meta.forEach(m => { s = Math.min(s, m[1]); w = Math.min(w, m[2]); n = Math.max(n, m[3]); e = Math.max(e, m[4]); }); return L.latLngBounds([s, w], [n, e]);
+  }
+  function clearShown() { shown.forEach(o => { if (o) { grp.removeLayer(o); if (o._u && o._blob) URL.revokeObjectURL(o._u); } }); shown.clear(); want = new Set(); }
+  async function draw() {
+    if (!map.hasLayer(grp) || !meta.length) return;
+    const b = map.getBounds(), S = b.getSouth(), N = b.getNorth(), W = b.getWest(), E = b.getEast(), pick = [];
+    for (const m of meta) { if (m[3] >= S && m[1] <= N && m[4] >= W && m[2] <= E) { pick.push(m); if (pick.length >= 150) break; } }
+    want = new Set(pick.map(m => m[0]));
+    shown.forEach((o, id) => { if (!want.has(id)) { if (o) { grp.removeLayer(o); if (o._u && o._blob) URL.revokeObjectURL(o._u); } shown.delete(id); } });
+    for (const m of pick) {
+      if (shown.has(m[0])) continue; shown.set(m[0], null);
+      try {
+        let u = m[5], isBlob = false, blob = null;
+        if (!u) { const d = await db(); blob = await rq(d.transaction('img').objectStore('img').get(m[0])); if (!blob) { shown.delete(m[0]); continue; } u = URL.createObjectURL(blob); isBlob = true; }
+        if (!want.has(m[0]) || !map.hasLayer(grp)) { if (isBlob) URL.revokeObjectURL(u); shown.delete(m[0]); continue; }
+        const ov = L.imageOverlay(u, [[m[1], m[2]], [m[3], m[4]]], { pane: 'jog', opacity: op, interactive: false }); ov._u = u; ov._blob = isBlob;
+        ov.addTo(grp); shown.set(m[0], ov);
+      } catch (e) { shown.delete(m[0]); }
+    }
+  }
+  /* ---- KML reader: streams the file in pieces and picks out <GroundOverlay> blocks one by one ---- */
+  const tagVal = (s, t) => { const m = new RegExp('<' + t + '>\\s*([-+0-9.eE]+)\\s*</' + t + '>').exec(s); return m ? parseFloat(m[1]) : NaN; };
+  const countOf = (txt, needle) => { let c = 0, i = -1; while ((i = txt.indexOf(needle, i + 1)) >= 0) c++; return c; };
+  async function importFiles(files) {
+    const arr = [...files], kml = arr.filter(f => /\.kml$/i.test(f.name)).sort((a, b) => b.size - a.size)[0];
+    if (!kml) { toast('Choose the .kml file (and its picture files too, if the KML points to separate images).'); return; }
+    const pics = new Map(); arr.forEach(f => { if (f !== kml) pics.set(f.name.toLowerCase(), f); });
+    busy = true; setBusy(0, 'Reading ' + kml.name + ' …'); try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (er) { /* ignore */ }
+    let d; try { d = await db(); const t = d.transaction(['meta', 'img'], 'readwrite'); t.objectStore('meta').clear(); t.objectStore('img').clear(); await txDone(t); } catch (e) { busy = false; status(); toast('JOG A: cannot use browser storage — ' + e.message, 'err'); return; }
+    clearShown(); meta = []; info = null;
+    const list = [], missing = new Set(); let total = 0, head = '', nPlace = 0, nOther = 0, nId = 0, fail = '', nQuad = 0;
+    async function handle(block) {
+      const he0 = block.indexOf('<href>'); if (he0 < 0) { nOther++; return; }
+      let href = block.slice(he0 + 6, block.indexOf('</href>', he0)).trim().replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
+      let s, n, e, w;
+      const bi = block.indexOf('<LatLonBox'), qi = block.indexOf('LatLonQuad');
+      if (bi >= 0) { const bx = block.slice(bi, block.indexOf('</LatLonBox>', bi) + 12); n = tagVal(bx, 'north'); s = tagVal(bx, 'south'); e = tagVal(bx, 'east'); w = tagVal(bx, 'west'); }
+      else if (qi >= 0) { const q = /<coordinates>([\s\S]*?)<\/coordinates>/.exec(block.slice(qi)); if (q) { const p = q[1].trim().split(/\s+/).map(x => x.split(',').map(Number)).filter(x => x.length >= 2 && isFinite(x[0]) && isFinite(x[1])); if (p.length >= 3) { nQuad++; s = Math.min(...p.map(x => x[1])); n = Math.max(...p.map(x => x[1])); w = Math.min(...p.map(x => x[0])); e = Math.max(...p.map(x => x[0])); } } }
+      if (![s, n, e, w].every(isFinite)) { nOther++; return; }
+      const id = ++nId; let blob = null, url = 0;
+      if (/^data:/i.test(href)) { blob = await (await fetch(href)).blob(); }
+      else if (/^https?:/i.test(href)) url = href.replace(/&amp;/g, '&');
+      else { let k = href.split(/[\\/]/).pop(); try { k = decodeURIComponent(k); } catch (er) { /* keep */ } const f = pics.get(k.toLowerCase()); if (f) blob = f; else { missing.add(k); return; } }
+      if (blob) { const t = d.transaction('img', 'readwrite'); t.objectStore('img').put(blob, id); await txDone(t); total += blob.size; }
+      list.push([id, s, w, n, e, url]);
+    }
+    try {
+      const reader = kml.stream().getReader(), dec = new TextDecoder('utf-8'); let read = 0, inside = false, parts = [], tail = '', tick = 0;
+      for (;;) {
+        const { done, value } = await reader.read(); let text = '';
+        if (value) { read += value.length; text = dec.decode(value, { stream: !done }); } else if (done) text = dec.decode();
+        if (!head) head = text.slice(0, 600);
+        if (!inside) { nPlace += countOf(text, '<Placemark'); }
+        let t = tail + text; tail = '';
+        while (t.length) {
+          if (!inside) { const st = t.indexOf('<GroundOverlay'); if (st < 0) { tail = t.slice(-20); break; } inside = true; parts = []; t = t.slice(st); }
+          else {
+            const en = t.indexOf('</GroundOverlay>');
+            if (en < 0) { parts.push(t.slice(0, Math.max(0, t.length - 16))); tail = t.slice(Math.max(0, t.length - 16)); break; }
+            parts.push(t.slice(0, en + 16)); const block = parts.join(''); parts = []; inside = false; t = t.slice(en + 16);
+            await handle(block);
+          }
+        }
+        if (++tick % 40 === 0 || done) setBusy(read / kml.size, 'Reading… ' + Math.round(100 * read / kml.size) + '% · ' + list.length + ' images · ' + mb(total));
+        if (done) break;
+      }
+    } catch (e) { fail = e && e.name === 'QuotaExceededError' ? 'the browser\u2019s storage for this site is full after ' + list.length + ' images (' + mb(total) + '). Free some disk space, or cut the chart down to the area / detail you need (e.g. a smaller KML) and load that instead.' : (e && e.message ? e.message : String(e)); }
+    try {
+      info = { name: kml.name, size: kml.size, n: list.length, bytes: total, at: Date.now() };
+      const t = d.transaction('meta', 'readwrite'); t.objectStore('meta').put(list, 'list'); t.objectStore('meta').put(info, 'info'); await txDone(t);
+    } catch (e) { fail = fail || e.message; }
+    meta = list; busy = false; status(); draw();
+    if (meta.length) { const bb = bounds(); if (bb) map.fitBounds(bb, { maxZoom: 9 }); toast('JOG A loaded: ' + meta.length + ' images · ' + mb(total) + (missing.size ? ' · ' + missing.size + ' picture file(s) not selected' : '') + (nQuad ? ' · rotated images drawn unrotated' : ''), missing.size ? 'warn' : undefined); }
+    report({ fail, missing: [...missing], nPlace, nOther, head, n: meta.length });
+  }
+  /* ---- small control on the map ---- */
+  function css() {
+    if (document.getElementById('jog-css')) return;
+    const st = document.createElement('style'); st.id = 'jog-css';
+    st.textContent = '.jog-ctl{background:#0f1822;color:#dbe6f0;border:1px solid #2a3b4d;border-radius:6px;padding:8px 9px;width:250px;max-width:70vw;font:12px/1.4 var(--sans,system-ui,sans-serif)}.jog-ctl b{color:#ffd27a}.jog-ctl .r{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}.jog-ctl button{background:#16222f;border:1px solid #31485e;color:#cfe0ef;border-radius:4px;padding:3px 8px;font:600 11px var(--mono,monospace);cursor:pointer}.jog-ctl button:hover{border-color:#ffd27a}.jog-ctl progress{width:100%;height:8px;margin-top:6px}.jog-ctl pre{white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto;background:#0a121a;border:1px solid #1b2a39;padding:4px;font:10px/1.3 var(--mono,monospace);color:#9fb2c4;margin:4px 0 0}.jog-ctl .w{color:#ff9d6b}.jog-ctl .s{color:#8094a7;font-size:10.5px}.jog-ctl input[type=range]{width:90px}';
+    document.head.append(st);
+  }
+  const ctl = L.control({ position: 'topleft' });
+  ctl.onAdd = () => {
+    css(); const d = document.createElement('div'); d.className = 'jog-ctl'; L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+    d.innerHTML = '<div><b>JOG A</b> · Thailand <span class="s">(your own KML file)</span></div><div class="j-st s" style="margin-top:4px"></div><progress class="j-pr" max="1" value="0" hidden></progress>' +
+      '<div class="r"><button class="j-load" type="button">Load KML…</button><button class="j-zoom" type="button">Zoom to chart</button><button class="j-del" type="button">Delete data</button></div>' +
+      '<div class="r s">Opacity <input class="j-op" type="range" min="0.2" max="1" step="0.05" value="1"></div><div class="j-rep"></div>' +
+      '<input class="j-file" type="file" accept=".kml,image/*" multiple hidden>';
+    const q = s => d.querySelector(s); ui = { d, st: q('.j-st'), pr: q('.j-pr'), rep: q('.j-rep'), file: q('.j-file'), del: q('.j-del'), zoom: q('.j-zoom'), op: q('.j-op'), load: q('.j-load') };
+    ui.load.onclick = () => { if (!busy) ui.file.click(); };
+    ui.file.onchange = () => { const f = [...ui.file.files]; ui.file.value = ''; if (f.length) importFiles(f); };
+    ui.zoom.onclick = () => { const b = bounds(); if (b) map.fitBounds(b, { maxZoom: 9 }); };
+    ui.op.oninput = () => { op = +ui.op.value; shown.forEach(o => { if (o) o.setOpacity(op); }); };
+    ui.del.onclick = async () => {
+      if (busy || !meta.length || !confirm('Delete the JOG A data stored on this device?')) return;
+      try { const d2 = await db(), t = d2.transaction(['meta', 'img'], 'readwrite'); t.objectStore('meta').clear(); t.objectStore('img').clear(); await txDone(t); } catch (e) { /* ignore */ }
+      clearShown(); meta = []; info = null; ui.rep.innerHTML = ''; status();
+    };
+    status(); return d;
+  };
+  function status() {
+    if (!ui) return;
+    ui.st.textContent = busy ? ui.st.textContent : meta.length ? meta.length + ' images · ' + mb(info ? info.bytes : 0) + ' · ' + (info ? info.name : '') : 'No JOG A data on this device yet — press “Load KML…” and pick your file (it stays on this computer).';
+    ui.pr.hidden = !busy; ui.del.disabled = busy || !meta.length; ui.zoom.disabled = !meta.length; ui.load.disabled = busy;
+  }
+  function setBusy(v, msg) { if (!ui) return; ui.pr.hidden = false; ui.pr.value = v; ui.st.textContent = msg; ui.load.disabled = true; ui.del.disabled = true; }
+  function report(r) {
+    if (!ui) return; let h = '';
+    if (r.fail) h += '<div class="w" style="margin-top:6px">Stopped: ' + esc(r.fail) + '</div>';
+    if (r.missing.length) h += '<div class="w" style="margin-top:6px">The KML points to ' + r.missing.length + ' separate picture file(s) that were not selected (e.g. ' + esc(r.missing.slice(0, 3).join(', ')) + '). Press “Load KML…” again and select the .kml together with its picture files.</div>';
+    if (!r.n && !r.missing.length) h += '<div class="w" style="margin-top:6px">No picture overlays (GroundOverlay) found in this file' + (r.nPlace ? ' — it holds ' + r.nPlace + ' vector placemarks instead' : '') + '. Start of the file:</div><pre>' + esc(r.head) + '</pre>';
+    ui.rep.innerHTML = h;
+  }
+  grp.addLayer(under);
+  grp.on('add', () => { ctl.addTo(map); if (!meta.length) loadMeta(); else draw(); map.on('moveend', draw); });
+  grp.on('remove', () => { map.off('moveend', draw); ctl.remove(); clearShown(); });
+  grp.options = { attribution: 'JOG A: user-supplied chart' };
+  window.JOG_A = { importFiles, state: () => ({ meta: meta.length, shown: shown.size, busy }), reload: loadMeta };
+  return grp;
+}());
 let baseKey = 'Street (Esri)';
 try { const b = localStorage.getItem('mission-planner.base'); if (b && BASES[b]) baseKey = b; } catch (e) { /* ignore */ }
 BASES[baseKey].addTo(map);
@@ -21624,7 +21770,7 @@ function baseFailed(k, why) {                                   // nothing arriv
   if (next) { map.removeLayer(BASES[k]); BASES[next].addTo(map); baseKey = next; armBase(next); toast('Map source "' + k + '" ' + why + ' — switched to "' + next + '".'); }
 }
 function armBase(k) {                                           // a tile base that has delivered no tile after 7 s is treated as unreachable
-  if (!BASES[k] || k === 'Offline (embedded)') return; const st = tileStat[k]; if (st.timer) clearTimeout(st.timer);
+  if (!BASES[k] || k === 'Offline (embedded)' || k === JOG_KEY) return; const st = tileStat[k]; if (st.timer) clearTimeout(st.timer);
   st.timer = setTimeout(() => { if (st.ok === 0 && map.hasLayer(BASES[k])) baseFailed(k, 'did not respond'); }, 7000);
 }
 Object.keys(BASES).forEach(k => {
