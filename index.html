@@ -30569,7 +30569,7 @@ const BRIEF_SLIDES = function (C) {
     TRAIN.forEach(t => { if (all.indexOf(t) < 0) all.push(t); });
     TRAIN.length = 0; all.forEach(t => TRAIN.push(t));
   }
-  const GDS = [['gd:general', 'General Briefing', 'การบินทั่วไป / ฝึกบินปกติ'], ['gd:instrument', 'Instrument Briefing', 'การบินด้วยเครื่องวัด (IFR)'], ['gd:nav', 'Navigation / Night Briefing', 'การบินเดินทาง / กลางคืน'], ['gd:formation', 'Formation Briefing', 'การบินกลุ่ม']];
+  const GDS = [['gd:general', 'General Briefing', 'การบินทั่วไป / ฝึกบินปกติ'], ['gd:instrument', 'Instrument Briefing', 'การบินด้วยเครื่องวัด (IFR)'], ['gd:nav', 'Navigation / Night Briefing', 'การบินเดินทาง / กลางคืน'], ['gd:formation', 'Formation Briefing', 'การบินหมู่']];
   const missionItems = () => {
     const L = [];
     TRAIN.forEach(t => L.push({ v: t.k, label: t.en + ' ' + t.th, sub: 'ฝึกบิน · Log ' + t.log + ' hr' + (t.rng ? ' · ชุด ' + t.rng : ''), grp: t.grp || 'การฝึกบิน (Phase)' }));
@@ -31376,7 +31376,7 @@ const BRIEF = (function () {
     ['general', 'General Briefing', 'การบินทั่วไป / ฝึกบินปกติ', 'ข้อ 1–27 ตามคู่มือ'],
     ['instrument', 'Instrument Briefing', 'การบินด้วยเครื่องวัด (IFR)', 'มี ATC clearance · SID · approach · circling'],
     ['nav', 'Navigation / Night Briefing', 'การบินเดินทาง / กลางคืน', 'Flight log · MSA · check points · PNR · ขั้นตอนกลางคืน'],
-    ['formation', 'Formation Briefing', 'การบินกลุ่ม', 'Join up · lost wingman · rendezvous · NORDO'],
+    ['formation', 'Formation Briefing', 'การบินหมู่', 'Join up · lost wingman · rendezvous · NORDO'],
     ['short', 'Short Briefing', 'การแถลงย่อ', 'เที่ยวบินสั้น 15 ข้อ']
   ];
   const MTH = {   // Thai name, source tab, objective table
