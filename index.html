@@ -33684,7 +33684,7 @@ const MC = (function () {
   function half(card, mark) { return T('div', 'mc-half', [card].concat(markNode(mark))); }
   function cardSheets(R) {
     const s = st(), n = R.rows.length, pairs = [];
-    if (s.opt.mode === 'dup' || n < 2) pairs.push([0, 0]); else for (let i = 0; i < n; i += 2) pairs.push([i, i + 1 < n ? i + 1 : i]);
+    pairs.push([0, 0]);                                              // both halves of the sheet are OUR aircraft's card (one for the pilot, one for the co-pilot); other aircraft only appear as rows on it
     const mk = (a, b, back) => { const fa = back ? MC.cardBack(R, a) : MC.cardFront(R, a), fb = back ? MC.cardBack(R, b) : MC.cardFront(R, b); const L = back && s.opt.swap ? [fb, fa] : [fa, fb]; return T('div', 'mc-sheet', [half(L[0], s.opt.mark), half(L[1], s.opt.mark), s.opt.cut ? T('div', 'mc-cut') : null]); };
     const out = []; pairs.forEach(p => { const f = mk(p[0], p[1], 0), b = mk(p[0], p[1], 1); f.dataset.face = 'front'; b.dataset.face = 'back'; out.push(f, b); }); return out;
   }
@@ -33772,12 +33772,12 @@ const MC = (function () {
         fld('AIRWORK', reg(tin(f, 'airwork', ''), r => r.airwork.v)),
         fld('METAR', metarBox(f, B))
       ]),
-      sec('2 · อากาศยาน (1 ลำ = 1 บัตร: ซ้าย = ลำที่ 1, ขวา = ลำที่ 2 ของแต่ละแผ่น)', [acBox(R)]),
+      sec('2 · อากาศยาน (ลำที่ 1 = เครื่องเรา · ลำที่ 2 ขึ้นไป = ลำที่บินช่วงเวลาเดียวกัน แสดงเป็นแถวในบัตร)', [acBox(R)]),
       sec('3 · OVERVIEW · Minimum fuel', overviewBox(R)),
       sec('4 · ตาราง AIRFIELD', airfieldBox(R)),
       sec('5 · NOTE (หลังบัตร) · Mission profile', noteBox(R)),
       sec('6 · การจัดหน้า / พิมพ์', [
-        fld('วางบัตรบนแผ่น', sel(s.opt, 'mode', [['pair', 'ซ้าย = ลำที่ 1 · ขวา = ลำที่ 2 (ตามตัวอย่าง)'], ['dup', 'ซ้ำบัตรของลำที่ 1 ทั้งสองใบ']])),
+        note('แผ่นละ 2 ใบเป็นบัตรของเครื่องเราทั้งคู่ (ใบหนึ่งสำหรับ PILOT อีกใบสำหรับ CO-PILOT) · ลำอื่นที่บินช่วงเวลาเดียวกันแสดงเป็นแถวในบัตร'),
         chk(s.opt, 'mark', 'เครื่องหมายกึ่งกลางด้านบนของแต่ละใบ (ไว้เล็งเครื่องเจาะ 2 รู — เจาะให้กึ่งกลางของเครื่องเจาะตรงขีด)'),
         chk(s.opt, 'cut', 'เส้นแนวตัด (ประ) กลางแผ่น'),
         chk(s.opt, 'swap', 'สลับซ้าย–ขวาของหน้าหลัง (พิมพ์สองหน้าแบบพลิกด้านสั้น ให้หน้าหลังตรงกับหน้าหน้าของบัตรเดียวกัน)'),
@@ -33798,7 +33798,7 @@ const MC = (function () {
       const row = R.rows[i] || {}, pf = R.perf[i] || {};
       const k = (key, t) => fld(t, reg(tin(r, key, ''), q => (q.rows[i] ? q.rows[i][key] : '')));
       const wbk = (key, t, ph) => { r.wb = r.wb || {}; return fld(t, reg(tin(r.wb, key, ''), q => (q.perf[i] ? q.perf[i][key].v : ''))); };
-      wrap.append(h('div', { class: 'mcd-ac' }, h('div', { class: 'mcd-ach' }, h('b', null, 'บัตรที่ ' + (i + 1) + (row.no ? ' · A/C ' + row.no : '')), btn('▲', () => { if (i > 0) { [s.ac[i - 1], s.ac[i]] = [s.ac[i], s.ac[i - 1]]; save(); rebuild(); } }, 'ghost', 'เลื่อนขึ้น'), btn('▼', () => { if (i < s.ac.length - 1) { [s.ac[i + 1], s.ac[i]] = [s.ac[i], s.ac[i + 1]]; save(); rebuild(); } }, 'ghost', 'เลื่อนลง'), btn('✕', () => { s.ac.splice(i, 1); save(); rebuild(); }, 'ghost', 'ลบ')),
+      wrap.append(h('div', { class: 'mcd-ac' }, h('div', { class: 'mcd-ach' }, h('b', null, (i === 0 ? 'ลำที่ 1 · เครื่องเรา' : 'ลำที่ ' + (i + 1) + ' · บินช่วงเวลาเดียวกัน') + (row.no ? ' · A/C ' + row.no : '')), btn('▲', () => { if (i > 0) { [s.ac[i - 1], s.ac[i]] = [s.ac[i], s.ac[i - 1]]; save(); rebuild(); } }, 'ghost', 'เลื่อนขึ้น'), btn('▼', () => { if (i < s.ac.length - 1) { [s.ac[i + 1], s.ac[i]] = [s.ac[i], s.ac[i + 1]]; save(); rebuild(); } }, 'ghost', 'เลื่อนลง'), btn('✕', () => { s.ac.splice(i, 1); save(); rebuild(); }, 'ghost', 'ลบ')),
         h('div', { class: 'mcd-g4' }, [k('no', 'A/C NO.'), k('cs', 'C/S'), k('pilot', 'PILOT'), k('copilot', 'CO-PILOT')]),
         h('div', { class: 'mcd-g4' }, [k('to', 'T/O'), k('ld', 'L/D'), k('area', 'AREA / ALT.')]),
         i > 0 ? null : h('details', { class: 'mcd-sub' }, h('summary', null, 'W&B / ประสิทธิภาพของลำนี้' + (pf.live ? ' (ดึงสดจากแท็บ W&B)' : ' (กรอกเอง — แท็บ W&B ตั้งไว้กับลำอื่น)')),
@@ -33806,7 +33806,7 @@ const MC = (function () {
           h('div', { class: 'mcd-g4' }, [wbk('vr', 'Rotation (KCAS)'), wbk('tod', 'T/O to 50 ft'), wbk('ldd', 'L/D from 50 ft')]),
           pf.live ? btn('ล็อกค่า W&B ปัจจุบันไว้เป็นของลำนี้', () => { r.wb = r.wb || {}; ['tw', 'mac', 'cg', 'vs', 'vr', 'tod', 'ldd'].forEach(q => { r.wb[q] = pf[q].v; }); save(); rebuild(); }, '', 'คัดลอกค่าที่ดึงมาเป็นค่าที่พิมพ์เอง (ไม่เปลี่ยนตามแท็บ W&B อีก)') : null)));
     });
-    wrap.append(btn('＋ เพิ่มอากาศยาน', () => { s.ac.push({}); save(); rebuild(); }), note('ค่า W&B ดึงสดได้เฉพาะลำที่โหลดอยู่ในแท็บ W&B (เทียบกับหมายเลข A/C) ถ้าไม่ได้โหลดไว้ ให้กรอกเองที่บัตรที่ 1 · ลำที่ 2 ขึ้นไปใส่ไว้เพื่อให้รู้ว่าใครบินด้วยกันเท่านั้น — หน้าหลัง (W&B) ใช้ค่าของเครื่องเรา (บัตรที่ 1) เสมอ'));
+    wrap.append(btn('＋ เพิ่มอากาศยาน', () => { s.ac.push({}); save(); rebuild(); }), note('ค่า W&B ดึงสดได้เฉพาะลำที่โหลดอยู่ในแท็บ W&B (เทียบกับหมายเลข A/C) ถ้าไม่ได้โหลดไว้ ให้กรอกเองที่ลำที่ 1 · ลำที่ 2 ขึ้นไปใส่ไว้เพื่อให้รู้ว่าใครบินด้วยกันเท่านั้น — หน้าหลัง (W&B) ใช้ค่าของเครื่องเราเสมอ'));
     return wrap;
   }
   function overviewBox(R) {
