@@ -21618,8 +21618,8 @@ BASES[JOG_KEY] = (function () {
   const grp = L.layerGroup(), under = BASES['Offline (embedded)'], street = streetUnder();
   grp.setZIndex = () => grp;                                       // the layers control would give every member of the group the same z-index; keep street (1) under the chart (2)
   grp.addLayer(street);
-  /* Default source: JOG A tiles made from THMAP250K.kmz and hosted on Firebase Hosting (Web-Mercator XYZ, WebP, zoom 5–11) — the page fetches only the tiles in view. */
-  const hosted = L.tileLayer(JOG_URL, { minNativeZoom: 5, maxNativeZoom: 11, maxZoom: 19, zIndex: 2, noWrap: true, bounds: JOG_BOX, crossOrigin: false, errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', attribution: 'JOG A — Joint Operations Graphic 1:250,000' });
+  /* Default source: JOG A tiles made from THMAP250K.kmz and hosted on Firebase Hosting (Web-Mercator XYZ, WebP, zoom 5–12; on high-density (retina) screens the next zoom level is fetched, so the chart is sharper) — the page fetches only the tiles in view. */
+  const hosted = L.tileLayer(JOG_URL, { minNativeZoom: L.Browser.retina ? 4 : 5, maxNativeZoom: L.Browser.retina ? 11 : 12, maxZoom: 20, detectRetina: true,   /* on retina Leaflet asks for zoom+1, so the native limits are one lower */ zIndex: 2, noWrap: true, bounds: JOG_BOX, crossOrigin: false, errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', attribution: 'JOG A — Joint Operations Graphic 1:250,000' });
   let hwarn = false;                                                  // true = the hosted tiles cannot be reached
   const probe = () => {                                               // one known tile decides: blank sea/land tiles are simply absent on the server (404), so tile errors alone prove nothing
     const im = new Image(); im.onload = () => { hwarn = false; };
