@@ -21705,7 +21705,7 @@ BASES[JOG_KEY] = (function () {
       info = { name: kml.name, size: kml.size, n: list.length, bytes: total, at: Date.now() };
       const t = d.transaction('meta', 'readwrite'); t.objectStore('meta').put(list, 'list'); t.objectStore('meta').put(info, 'info'); await txDone(t);
     } catch (e) { fail = fail || e.message; }
-    meta = list; busy = false; status(); draw();
+    meta = list; busy = false; status(); draw(); syncUnder();
     if (meta.length) { const bb = bounds(); if (bb) map.fitBounds(bb, { maxZoom: 9 }); toast('JOG A loaded: ' + meta.length + ' images · ' + mb(total) + (missing.size ? ' · ' + missing.size + ' picture file(s) not selected' : '') + (nQuad ? ' · rotated images drawn unrotated' : ''), missing.size ? 'warn' : undefined); }
     report({ fail, missing: [...missing], nPlace, nOther, head, n: meta.length });
   }
@@ -21731,7 +21731,7 @@ BASES[JOG_KEY] = (function () {
     ui.del.onclick = async () => {
       if (busy || !meta.length || !confirm('Delete the JOG A data stored on this device?')) return;
       try { const d2 = await db(), t = d2.transaction(['meta', 'img'], 'readwrite'); t.objectStore('meta').clear(); t.objectStore('img').clear(); await txDone(t); } catch (e) { /* ignore */ }
-      clearShown(); meta = []; info = null; ui.rep.innerHTML = ''; status();
+      clearShown(); meta = []; info = null; ui.rep.innerHTML = ''; status(); syncUnder();
     };
     status(); return d;
   };
@@ -21748,23 +21748,24 @@ BASES[JOG_KEY] = (function () {
     if (!r.n && !r.missing.length) h += '<div class="w" style="margin-top:6px">No picture overlays (GroundOverlay) found in this file' + (r.nPlace ? ' — it holds ' + r.nPlace + ' vector placemarks instead' : '') + '. Start of the file:</div><pre>' + esc(r.head) + '</pre>';
     ui.rep.innerHTML = h;
   }
-  grp.addLayer(under);
-  grp.on('add', () => { ctl.addTo(map); if (!meta.length) loadMeta(); else draw(); map.on('moveend', draw); });
-  grp.on('remove', () => { map.off('moveend', draw); ctl.remove(); clearShown(); });
+  const syncUnder = () => { if (!map.hasLayer(grp)) return; if (meta.length) grp.removeLayer(under); else grp.addLayer(under); };   // the offline map's opaque land would cover the chart, so it shows only while no JOG data is stored
+  grp.on('add', () => { ctl.addTo(map); syncUnder(); if (!meta.length) loadMeta().then(syncUnder); else draw(); map.on('moveend', draw); });
+  grp.on('remove', () => { map.off('moveend', draw); ctl.remove(); clearShown(); grp.removeLayer(under); });
   grp.options = { attribution: 'JOG A: user-supplied chart' };
   window.JOG_A = { importFiles, state: () => ({ meta: meta.length, shown: shown.size, busy }), reload: loadMeta };
   return grp;
 }());
 /* TPC (Tactical Pilotage Chart, 1:500,000) base map: tiles made from the user's TPC_mosaic_WGS84.tif (Web-Mercator XYZ, WebP, zoom 5–10, 2,465 files ≈ 22 MB) and hosted on Firebase Hosting,
-   so the page only fetches the few tiles in view. The embedded offline map sits underneath (areas outside the chart, transparent margins, or tiles not reachable). */
+   so the page only fetches the few tiles in view. The embedded offline map is shown instead only if the tiles cannot be loaded. */
 const TPC_KEY = 'TPC (Thailand)', TPC_URL = 'https://au-23a-flight-planning.web.app/tpc/{z}/{x}/{y}.webp';
 BASES[TPC_KEY] = (function () {
   const grp = L.layerGroup(), under = BASES['Offline (embedded)'];
   const tl = L.tileLayer(TPC_URL, { minNativeZoom: 5, maxNativeZoom: 10, maxZoom: 19, noWrap: true, bounds: [[3.98, 95.95], [24.25, 109.27]], crossOrigin: false, attribution: 'TPC — Tactical Pilotage Chart 1:500,000' });
   let ok = 0, bad = 0, warned = false;
-  tl.on('tileload', () => { ok++; }); tl.on('tileerror', () => { bad++; if (!ok && bad >= 4 && !warned) { warned = true; toast('TPC tiles could not be loaded from ' + TPC_URL.replace(/\/\{z\}.*$/, '') + ' — check that the TPC folder is deployed to Firebase Hosting and that you are online. The offline map is shown instead.', 'warn'); } });
-  grp.addLayer(under); grp.addLayer(tl);
+  tl.on('tileload', () => { ok++; }); tl.on('tileerror', () => { bad++; if (!ok && bad >= 4 && !warned) { warned = true; grp.addLayer(under); toast('TPC tiles could not be loaded from ' + TPC_URL.replace(/\/\{z\}.*$/, '') + ' — check that the TPC folder is deployed to Firebase Hosting and that you are online. The offline map is shown instead.', 'warn'); } });
+  grp.addLayer(tl);                                             // the chart alone: the offline map's opaque land polygons would cover it, so it is only added when the tiles cannot be loaded
   grp.on('add', () => { ok = 0; bad = 0; warned = false; });
+  grp.on('remove', () => { grp.removeLayer(under); });
   grp.options = { attribution: 'TPC — Tactical Pilotage Chart 1:500,000' };
   return grp;
 }());
