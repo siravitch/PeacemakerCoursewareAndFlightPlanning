@@ -33456,8 +33456,7 @@ const MC = (function () {
     return T('div', 'mc-card mc-front mc-grid', cells, { style: 'grid-template-rows:' + rowsT });
   }
   function cardBack(R, ai) {
-    const s = st(), k0 = R.rows[ai] ? ai : 0, noWB = p => !p.live && !['tw', 'mac', 'cg', 'vs', 'vr', 'tod', 'ldd'].some(x => p[x].v !== ''),
-      k = k0 !== 0 && noWB(R.perf[k0]) ? 0 : k0,                    // another aircraft with no W&B of its own → the back shows OUR aircraft's W&B (aircraft 1), not an empty card
+    const s = st(), k = 0,                                   // the back is always OUR aircraft's W&B (aircraft 1); the other aircraft on the card are only listed to show who flies with us
       pf = R.perf[k], q = R.rows[k], card = T('div', 'mc-card mc-back mc-grid mc-bgrid');
     const L = [['Total Weight', pf.tw, 'lbs.'], ['%MAC', pf.mac, '%'], ['C.G.', pf.cg, 'in'], ['Stall speed (flaps ' + (s.vsFlap === 100 ? '100' : s.vsFlap === 0 ? '0' : '74') + '%)', pf.vs, 'KCAS'], ['Takeoff rotation speed', pf.vr, 'KCAS'], ['T/O distance to 50 feet', pf.tod, 'ft.'], ['L/D distance from 50 feet', pf.ldd, 'ft.']];
     const put = (cls, kids, row, col, cs, rs) => card.append(T('div', 'mc-c ' + cls, kids, { style: 'grid-row:' + row + '/span ' + (rs || 1) + ';grid-column:' + col + '/span ' + (cs || 1) }));
@@ -33802,12 +33801,12 @@ const MC = (function () {
       wrap.append(h('div', { class: 'mcd-ac' }, h('div', { class: 'mcd-ach' }, h('b', null, 'บัตรที่ ' + (i + 1) + (row.no ? ' · A/C ' + row.no : '')), btn('▲', () => { if (i > 0) { [s.ac[i - 1], s.ac[i]] = [s.ac[i], s.ac[i - 1]]; save(); rebuild(); } }, 'ghost', 'เลื่อนขึ้น'), btn('▼', () => { if (i < s.ac.length - 1) { [s.ac[i + 1], s.ac[i]] = [s.ac[i], s.ac[i + 1]]; save(); rebuild(); } }, 'ghost', 'เลื่อนลง'), btn('✕', () => { s.ac.splice(i, 1); save(); rebuild(); }, 'ghost', 'ลบ')),
         h('div', { class: 'mcd-g4' }, [k('no', 'A/C NO.'), k('cs', 'C/S'), k('pilot', 'PILOT'), k('copilot', 'CO-PILOT')]),
         h('div', { class: 'mcd-g4' }, [k('to', 'T/O'), k('ld', 'L/D'), k('area', 'AREA / ALT.')]),
-        h('details', { class: 'mcd-sub' }, h('summary', null, 'W&B / ประสิทธิภาพของลำนี้' + (pf.live ? ' (ดึงสดจากแท็บ W&B)' : ' (กรอกเอง — แท็บ W&B ตั้งไว้กับลำอื่น)')),
+        i > 0 ? null : h('details', { class: 'mcd-sub' }, h('summary', null, 'W&B / ประสิทธิภาพของลำนี้' + (pf.live ? ' (ดึงสดจากแท็บ W&B)' : ' (กรอกเอง — แท็บ W&B ตั้งไว้กับลำอื่น)')),
           h('div', { class: 'mcd-g4' }, [wbk('tw', 'Total weight (lb)'), wbk('mac', '%MAC'), wbk('cg', 'C.G. (in)'), wbk('vs', 'Stall (KCAS)')]),
           h('div', { class: 'mcd-g4' }, [wbk('vr', 'Rotation (KCAS)'), wbk('tod', 'T/O to 50 ft'), wbk('ldd', 'L/D from 50 ft')]),
           pf.live ? btn('ล็อกค่า W&B ปัจจุบันไว้เป็นของลำนี้', () => { r.wb = r.wb || {}; ['tw', 'mac', 'cg', 'vs', 'vr', 'tod', 'ldd'].forEach(q => { r.wb[q] = pf[q].v; }); save(); rebuild(); }, '', 'คัดลอกค่าที่ดึงมาเป็นค่าที่พิมพ์เอง (ไม่เปลี่ยนตามแท็บ W&B อีก)') : null)));
     });
-    wrap.append(btn('＋ เพิ่มอากาศยาน', () => { s.ac.push({}); save(); rebuild(); }), note('ค่า W&B ดึงสดได้เฉพาะลำที่โหลดอยู่ในแท็บ W&B (เทียบกับหมายเลข A/C) ลำอื่นให้กรอกเอง หรือเปลี่ยนลำในแท็บ W&B แล้วกด “ล็อกค่า” เก็บไว้ทีละลำ — ถ้าลำที่ 2 ขึ้นไปไม่ได้กรอก W&B หน้าหลังของบัตรนั้นจะใช้ค่า W&B ของเครื่องเรา (บัตรที่ 1)'));
+    wrap.append(btn('＋ เพิ่มอากาศยาน', () => { s.ac.push({}); save(); rebuild(); }), note('ค่า W&B ดึงสดได้เฉพาะลำที่โหลดอยู่ในแท็บ W&B (เทียบกับหมายเลข A/C) ถ้าไม่ได้โหลดไว้ ให้กรอกเองที่บัตรที่ 1 · ลำที่ 2 ขึ้นไปใส่ไว้เพื่อให้รู้ว่าใครบินด้วยกันเท่านั้น — หน้าหลัง (W&B) ใช้ค่าของเครื่องเรา (บัตรที่ 1) เสมอ'));
     return wrap;
   }
   function overviewBox(R) {
