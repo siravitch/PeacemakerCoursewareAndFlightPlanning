@@ -21611,11 +21611,15 @@ BASES['Offline (embedded)'] = (function () {
 }());
 /* JOG A (Thailand) base map — the chart is the user's own KML file (GroundOverlay images). It is read in the browser (never uploaded), the images are kept in
    IndexedDB on this device and only the ones in view are drawn. The embedded offline map sits underneath, so areas outside the chart are not blank. */
+/* Street map (Esri) drawn UNDER a chart layer (JOG A / TPC): wherever the chart has no data the street map shows instead of a blank area. A separate tile layer, so the 'Street (Esri)' radio stays independent. */
+const streetUnder = () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, zIndex: 1, attribution: 'Street map &copy; Esri' });
 const JOG_KEY = 'JOG A (Thailand)', JOG_URL = 'https://au-23a-flight-planning.web.app/jog/{z}/{x}/{y}.webp', JOG_BOX = [[5.0024, 96.0], [21.0011, 106.4961]];
 BASES[JOG_KEY] = (function () {
-  const grp = L.layerGroup(), under = BASES['Offline (embedded)'];
+  const grp = L.layerGroup(), under = BASES['Offline (embedded)'], street = streetUnder();
+  grp.setZIndex = () => grp;                                       // the layers control would give every member of the group the same z-index; keep street (1) under the chart (2)
+  grp.addLayer(street);
   /* Default source: JOG A tiles made from THMAP250K.kmz and hosted on Firebase Hosting (Web-Mercator XYZ, WebP, zoom 5–11) — the page fetches only the tiles in view. */
-  const hosted = L.tileLayer(JOG_URL, { minNativeZoom: 5, maxNativeZoom: 11, maxZoom: 19, noWrap: true, bounds: JOG_BOX, crossOrigin: false, errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', attribution: 'JOG A — Joint Operations Graphic 1:250,000' });
+  const hosted = L.tileLayer(JOG_URL, { minNativeZoom: 5, maxNativeZoom: 11, maxZoom: 19, zIndex: 2, noWrap: true, bounds: JOG_BOX, crossOrigin: false, errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', attribution: 'JOG A — Joint Operations Graphic 1:250,000' });
   let hwarn = false;                                                  // true = the hosted tiles cannot be reached
   const probe = () => {                                               // one known tile decides: blank sea/land tiles are simply absent on the server (404), so tile errors alone prove nothing
     const im = new Image(); im.onload = () => { hwarn = false; };
@@ -21772,7 +21776,9 @@ BASES[JOG_KEY] = (function () {
 const TPC_KEY = 'TPC (Thailand)', TPC_URL = 'https://au-23a-flight-planning.web.app/tpc/{z}/{x}/{y}.webp';
 BASES[TPC_KEY] = (function () {
   const grp = L.layerGroup(), under = BASES['Offline (embedded)'];
-  const tl = L.tileLayer(TPC_URL, { minNativeZoom: 5, maxNativeZoom: 10, maxZoom: 19, noWrap: true, bounds: [[3.98, 95.95], [24.25, 109.27]], crossOrigin: false, attribution: 'TPC — Tactical Pilotage Chart 1:500,000' });
+  grp.setZIndex = () => grp;                                    // keep street (1) under the chart (2) – the layers control would otherwise give both the same z-index
+  grp.addLayer(streetUnder());                                  // street map under the chart, for the areas the chart does not cover
+  const tl = L.tileLayer(TPC_URL, { minNativeZoom: 5, maxNativeZoom: 10, maxZoom: 19, zIndex: 2, noWrap: true, bounds: [[3.98, 95.95], [24.25, 109.27]], crossOrigin: false, attribution: 'TPC — Tactical Pilotage Chart 1:500,000' });
   let ok = 0, bad = 0, warned = false;
   tl.on('tileload', () => { ok++; }); tl.on('tileerror', () => { bad++; if (!ok && bad >= 4 && !warned) { warned = true; grp.addLayer(under); toast('TPC tiles could not be loaded from ' + TPC_URL.replace(/\/\{z\}.*$/, '') + ' — check that the TPC folder is deployed to Firebase Hosting and that you are online. The offline map is shown instead.', 'warn'); } });
   grp.addLayer(tl);                                             // the chart alone: the offline map's opaque land polygons would cover it, so it is only added when the tiles cannot be loaded
