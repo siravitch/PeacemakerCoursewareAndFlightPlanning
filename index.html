@@ -21611,9 +21611,17 @@ BASES['Offline (embedded)'] = (function () {
 }());
 /* JOG A (Thailand) base map — the chart is the user's own KML file (GroundOverlay images). It is read in the browser (never uploaded), the images are kept in
    IndexedDB on this device and only the ones in view are drawn. The embedded offline map sits underneath, so areas outside the chart are not blank. */
-const JOG_KEY = 'JOG A (Thailand)';
+const JOG_KEY = 'JOG A (Thailand)', JOG_URL = 'https://au-23a-flight-planning.web.app/jog/{z}/{x}/{y}.webp', JOG_BOX = [[5.0024, 96.0], [21.0011, 106.4961]];
 BASES[JOG_KEY] = (function () {
   const grp = L.layerGroup(), under = BASES['Offline (embedded)'];
+  /* Default source: JOG A tiles made from THMAP250K.kmz and hosted on Firebase Hosting (Web-Mercator XYZ, WebP, zoom 5–11) — the page fetches only the tiles in view. */
+  const hosted = L.tileLayer(JOG_URL, { minNativeZoom: 5, maxNativeZoom: 11, maxZoom: 19, noWrap: true, bounds: JOG_BOX, crossOrigin: false, errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', attribution: 'JOG A — Joint Operations Graphic 1:250,000' });
+  let hwarn = false;                                                  // true = the hosted tiles cannot be reached
+  const probe = () => {                                               // one known tile decides: blank sea/land tiles are simply absent on the server (404), so tile errors alone prove nothing
+    const im = new Image(); im.onload = () => { hwarn = false; };
+    im.onerror = () => { if (hwarn || meta.length || !map.hasLayer(grp)) return; hwarn = true; syncUnder(); toast('JOG A tiles could not be loaded from ' + JOG_URL.replace(/\/\{z\}.*$/, '') + ' — check that the JOG folder is deployed to Firebase Hosting and that you are online. The offline map is shown instead (or load your own KML with the panel).', 'warn'); };
+    im.src = JOG_URL.replace('{z}', '5').replace('{x}', '24').replace('{y}', '14') + '?p=' + Date.now();
+  };
   map.createPane('jog').style.zIndex = 205;                        // above the base tiles, below routes and aeronautical overlays
   let meta = [], info = null, shown = new Map(), want = new Set(), op = 1, busy = false, dbp = null, ui = null;   // meta rows: [id, south, west, north, east, url|0]
   const db = () => dbp || (dbp = new Promise((ok, no) => {
@@ -21719,14 +21727,14 @@ BASES[JOG_KEY] = (function () {
   const ctl = L.control({ position: 'topleft' });
   ctl.onAdd = () => {
     css(); const d = document.createElement('div'); d.className = 'jog-ctl'; L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
-    d.innerHTML = '<div><b>JOG A</b> · Thailand <span class="s">(your own KML file)</span></div><div class="j-st s" style="margin-top:4px"></div><progress class="j-pr" max="1" value="0" hidden></progress>' +
+    d.innerHTML = '<div><b>JOG A</b> · Thailand <span class="s">(1:250,000)</span></div><div class="j-st s" style="margin-top:4px"></div><progress class="j-pr" max="1" value="0" hidden></progress>' +
       '<div class="r"><button class="j-load" type="button">Load KML…</button><button class="j-zoom" type="button">Zoom to chart</button><button class="j-del" type="button">Delete data</button></div>' +
       '<div class="r s">Opacity <input class="j-op" type="range" min="0.2" max="1" step="0.05" value="1"></div><div class="j-rep"></div>' +
       '<input class="j-file" type="file" accept=".kml,image/*" multiple hidden>';
     const q = s => d.querySelector(s); ui = { d, st: q('.j-st'), pr: q('.j-pr'), rep: q('.j-rep'), file: q('.j-file'), del: q('.j-del'), zoom: q('.j-zoom'), op: q('.j-op'), load: q('.j-load') };
     ui.load.onclick = () => { if (!busy) ui.file.click(); };
     ui.file.onchange = () => { const f = [...ui.file.files]; ui.file.value = ''; if (f.length) importFiles(f); };
-    ui.zoom.onclick = () => { const b = bounds(); if (b) map.fitBounds(b, { maxZoom: 9 }); };
+    ui.zoom.onclick = () => { map.fitBounds(bounds() || L.latLngBounds(JOG_BOX), { maxZoom: 9 }); };
     ui.op.oninput = () => { op = +ui.op.value; shown.forEach(o => { if (o) o.setOpacity(op); }); };
     ui.del.onclick = async () => {
       if (busy || !meta.length || !confirm('Delete the JOG A data stored on this device?')) return;
@@ -21737,8 +21745,8 @@ BASES[JOG_KEY] = (function () {
   };
   function status() {
     if (!ui) return;
-    ui.st.textContent = busy ? ui.st.textContent : meta.length ? meta.length + ' images · ' + mb(info ? info.bytes : 0) + ' · ' + (info ? info.name : '') : 'No JOG A data on this device yet — press “Load KML…” and pick your file (it stays on this computer).';
-    ui.pr.hidden = !busy; ui.del.disabled = busy || !meta.length; ui.zoom.disabled = !meta.length; ui.load.disabled = busy;
+    ui.st.textContent = busy ? ui.st.textContent : meta.length ? meta.length + ' images · ' + mb(info ? info.bytes : 0) + ' · ' + (info ? info.name : '') : 'Hosted chart (Firebase) — loads only the tiles in view. Optional: “Load KML…” uses your own local file instead.';
+    ui.pr.hidden = !busy; ui.del.disabled = busy || !meta.length; ui.zoom.disabled = false; ui.load.disabled = busy;
   }
   function setBusy(v, msg) { if (!ui) return; ui.pr.hidden = false; ui.pr.value = v; ui.st.textContent = msg; ui.load.disabled = true; ui.del.disabled = true; }
   function report(r) {
@@ -21748,10 +21756,14 @@ BASES[JOG_KEY] = (function () {
     if (!r.n && !r.missing.length) h += '<div class="w" style="margin-top:6px">No picture overlays (GroundOverlay) found in this file' + (r.nPlace ? ' — it holds ' + r.nPlace + ' vector placemarks instead' : '') + '. Start of the file:</div><pre>' + esc(r.head) + '</pre>';
     ui.rep.innerHTML = h;
   }
-  const syncUnder = () => { if (!map.hasLayer(grp)) return; if (meta.length) grp.removeLayer(under); else grp.addLayer(under); };   // the offline map's opaque land would cover the chart, so it shows only while no JOG data is stored
-  grp.on('add', () => { ctl.addTo(map); syncUnder(); if (!meta.length) loadMeta().then(syncUnder); else draw(); map.on('moveend', draw); });
-  grp.on('remove', () => { map.off('moveend', draw); ctl.remove(); clearShown(); grp.removeLayer(under); });
-  grp.options = { attribution: 'JOG A: user-supplied chart' };
+  const syncUnder = () => {   // the offline map's opaque land would cover the chart, so it is added only when no chart can be shown
+    if (!map.hasLayer(grp)) return;
+    if (meta.length) { grp.removeLayer(hosted); grp.removeLayer(under); }          // the user's own KML (stored on this device) takes over
+    else { grp.addLayer(hosted); if (hwarn) grp.addLayer(under); else grp.removeLayer(under); }
+  };
+  grp.on('add', () => { hwarn = false; ctl.addTo(map); syncUnder(); if (!meta.length) probe(); if (!meta.length) loadMeta().then(syncUnder); else draw(); map.on('moveend', draw); });
+  grp.on('remove', () => { map.off('moveend', draw); ctl.remove(); clearShown(); grp.removeLayer(under); grp.removeLayer(hosted); });
+  grp.options = { attribution: 'JOG A chart' };
   window.JOG_A = { importFiles, state: () => ({ meta: meta.length, shown: shown.size, busy }), reload: loadMeta };
   return grp;
 }());
