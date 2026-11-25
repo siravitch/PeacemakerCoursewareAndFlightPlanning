@@ -2496,6 +2496,20 @@ textarea.brs-in{resize:vertical;font-family:var(--mono);font-size:12px;line-heig
 .brs-obj{display:flex;flex-direction:column;gap:6px;min-width:0}
 .brs-oh{font-size:.82em}.brs-oh b{font-weight:600}
 .brs-ol.cols{columns:2;column-gap:36px}.brs-ol .brs-l{break-inside:avoid}
+.brs-body.awf{left:40px;right:50px;top:190px;bottom:62px;line-height:1.55}
+.brs-awsub{position:absolute;left:0;right:0;top:126px;text-align:center;font-size:26px;line-height:1.35;color:#0b1624;font-weight:500}
+.brs-awg{background:#00ee00;padding:0 6px}
+.brs-awl{min-width:0}
+.brs-awh.h0{font-size:1.15em}.brs-awh.h1{margin-left:2em}
+.brs-awb{margin-left:4em;display:grid;grid-template-columns:2.2em 1fr}
+.brs-awi{margin-left:6em;display:grid;grid-template-columns:2.3em 1fr}
+.brs-awv{margin-left:8.3em;color:#f00;white-space:pre-line}.brs-awv.bs{margin-left:6.2em}
+.brs-awr{color:#f00}
+.brs-awl sub{font-size:.62em;line-height:0}
+.brs-body.awf .brs-split.two{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}
+.brs-body.awf .brs-pics img,.brs-body.awf .brs-pics.n1 img{max-height:455px}
+.brs-awe{border:1px solid var(--line,#2a3b52);border-radius:8px;padding:8px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.brs-awit{border-top:1px dashed var(--line,#2a3b52);padding-top:6px;display:flex;flex-direction:column;gap:6px}
 .brs-chartbox{background:#ffffffd8;border:1px solid #cdd6df;border-radius:6px;padding:4px}
 .brs-chart{width:100%;height:auto;display:block}
 .brs-chart .gr{stroke:#d6dde5;stroke-width:1}.brs-chart .ax{font:13px sans-serif;fill:#5a6b7c}.brs-chart .at{font:600 14px sans-serif;fill:#4a5b6c}
@@ -30960,7 +30974,7 @@ const BRIEF_SLIDES = function (C) {
 
   /* ---------------- state ---------------- */
   const dflt = () => ({ v: 1, i: 0, title: 'Pre-Flight Briefing', briefer: '', date: '', roll: [{ n: '', r: 'pilot' }, { n: '', r: 'co-pilot' }], emerg: [], prim: null, more: [], alt: { k: 'na' }, objMode: 'train', objTxt: '', prof: null,
-    txt: {}, img: {}, card: {}, radio: null, radioNote: '*** UHF : 255.8\nEmergency : 121.5 / 243.0', areas: null, extra: [], off: {}, pull: { nav: true, wb: true, fuel: true, perf: true, mc: true } });
+    txt: {}, img: {}, aw: {}, card: {}, radio: null, radioNote: '*** UHF : 255.8\nEmergency : 121.5 / 243.0', areas: null, extra: [], off: {}, pull: { nav: true, wb: true, fuel: true, perf: true, mc: true } });
   let S = dflt(), loaded = false;
   const isSp = p => p && typeof p.k === 'string' && p.k.indexOf('sp:') === 0;
   const legacy = () => { if (isSp(S.prim)) S.prim = null; if (isSp(S.alt)) S.alt = null; if (S.more) S.more = S.more.filter(m => !isSp(m)); };   // older saves copied the ticked special missions into the sortie lines: they are topic sets, not the sortie
@@ -31097,7 +31111,11 @@ const BRIEF_SLIDES = function (C) {
     ['gnd', 'eng', 'aft', 'taxi', 'bto', 'tko', 'atk', 'dep', 'enr'].forEach(k => D0.push(txtSlide(TXT[k])));
     areas().forEach((a, i) => D0.push({ id: 'area' + i, name: '17. TARGET / OPERATING AREA · ' + (a.n || (i + 1)), ed: (p, rd) => edArea(p, i, rd), draw: st => drawArea(st, i) }));
     D0.push(txtSlide(TXT.mp));
-    tsets().forEach((i, k) => { D0.push(txtSlide(T('mpt' + i, '18', 'MISSION TOPICS', 'M' + (k + 1) + ' ' + tsName(i) + '\n' + tsOutline(i), { hint: 'หัวข้อที่ต้องบรีฟของภารกิจ ' + tsName(i) + ' (จากชุดหัวข้อใน Briefing Guide) — แก้ไข / ตัดบรรทัดได้' }))); D0.push(txtSlide(T('mps' + i, '18', 'MISSION PROFILE', '18.' + (k + 1) + ' ' + tsName(i) + '\n  ', { img: 1, hint: 'โปรไฟล์ของภารกิจ ' + tsName(i) }))); });
+    tsets().forEach((i, k) => {                                  // 8. AIRWORK form of each ticked mission (the older outline / picture slides only stay when they were edited)
+      if (S.txt['mpt' + i] != null) D0.push(txtSlide(T('mpt' + i, '18', 'MISSION TOPICS', 'M' + (k + 1) + ' ' + tsName(i) + '\n' + tsOutline(i), { hint: 'หัวข้อที่ต้องบรีฟของภารกิจ ' + tsName(i) + ' (จากชุดหัวข้อใน Briefing Guide) — แก้ไข / ตัดบรรทัดได้' })));
+      if (S.txt['mps' + i] != null || imgs('mps' + i).length) D0.push(txtSlide(T('mps' + i, '18', 'MISSION PROFILE', '18.' + (k + 1) + ' ' + tsName(i) + '\n  ', { img: 1, hint: 'โปรไฟล์ของภารกิจ ' + tsName(i) })));
+      awOf(i).pages.forEach(pg => D0.push({ id: 'aw' + i + '_' + pg.id, name: '8.' + (k + 2) + ' AIRWORK · ' + tsName(i) + ' · ' + awName(pg), ed: (pp, rd) => edAw(pp, i, pg.id, rd), draw: st => drawAw(st, i, pg.id) }));
+    });
     more().forEach((m, i) => D0.push(txtSlide(T('mpm' + (i + 1), '18', 'MISSION PROFILE', '18.1 ' + missionShort(m) + '\n  ', { img: 1, hint: 'โปรไฟล์ของภารกิจที่ ' + (i + 2) + ' ในเที่ยวบินนี้' }))));
     ['con1', 'con2', 'rec', 'tpl', 'lem', 'alnd', 'pf', 'ckp', 'aem'].forEach(k => D0.push(txtSlide(TXT[k])));
     S.extra.forEach((x, i) => D0.push({ id: 'x' + i, name: '＋ ' + (x.t || 'สไลด์เพิ่มเติม ' + (i + 1)), ed: (p, rd) => edExtra(p, i, rd), draw: st => drawExtra(st, i) }));
@@ -31574,6 +31592,79 @@ const BRIEF_SLIDES = function (C) {
     p.append(field('หัวข้อสไลด์', inp(x.t, v => { x.t = v; }, '', rd)), field('เนื้อหา (ชิดซ้าย = หัวข้อ · เว้น 2 ช่อง = ข้อย่อย)', ta(x.x, v => { x.x = v; }, '', rd, 10)), picsEd('x' + i, rd), h('button', { type: 'button', class: 'btn sm', onclick: () => { S.extra.splice(i, 1); delete S.img['x' + i]; save(); rd(true); } }, 'ลบสไลด์นี้'));
   }
 
+  /* ---- 8. AIRWORK · mission profile form ----
+     One slide per page of the Briefing Guide's outline of the ticked mission (GROUND / AIR OPERATION → CP / IP, flight tactics, operation procedure, operation time).
+     Every page is editable (headings, lettered blocks, numbered items with a red value, N/A, pictures) and can be duplicated (IP_B, TGT_B …), moved or deleted. */
+  const AW_ACR = /^(CP|IP|TGT|VOR|TACAN|GPS|BDA|NAV|FLIR|EO|IR|ATC|IFR|VFR|NDB|MSA|RWY|TOT|DME|ILS|AOB|KIAS|RPM|LUU)$/, AW_SM = /^(of|to|and|in|on|the|at|for|a|an|or|by|from)$/;
+  const awTitle = s => String(s || '').replace(/OPEARTION/g, 'OPERATION').split(/(\s+)/).map((w, k) => w.replace(/[A-Za-z]+/g, (x, off) => { const u = x.toUpperCase(); if (u === 'AIDS') return 'AIDs'; if (AW_ACR.test(u)) return u; if (AW_SM.test(x.toLowerCase()) && !(k === 0 && off === 0)) return x.toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1).toLowerCase(); })).join('');
+  const AW_TAG = [[/^CONTACT POINT/, '(CP_A)'], [/^INITIAL POINT/, '(IP_A)'], [/^TARGETS? AREA/, '(TGT_A)']];
+  const subs = s => { const out = []; String(s == null ? '' : s).split(/_([A-Za-z0-9\/]+)/).forEach((t, k) => out.push(k % 2 ? E('', 'sub', t) : t)); return out; };   // IP_A → IP with a subscript A
+  function awBuild(i) {                                            // the default pages of a mission, from the guide's outline
+    const its = D.missions[i].items || [], no = '8.' + (tsets().indexOf(i) + 2), pages = []; let h1 = '', h2 = '', s1 = '', cur = null, blk = null, seq = 0;
+    const flush = () => { if (cur) pages.push(cur); cur = null; blk = null; };
+    its.forEach(x => {
+      if (x.lv === 1) { flush(); s1 = x.n; h1 = no + '.' + x.n + ' ' + awTitle(x.t); h2 = ''; }
+      else if (x.lv === 2) { flush(); h2 = no + '.' + s1 + '.' + String(x.n).split('.').pop() + ' ' + awTitle(x.t); }
+      else if (x.lv === 3) {
+        const tag = (AW_TAG.find(q => q[0].test(x.t.toUpperCase())) || [0, ''])[1];
+        const nb = { n: x.n + '.', t: awTitle(x.t), tag, sub: '', na: 0, items: [] };
+        if (cur && cur.h[1] === h2 && cur.b.every(q => !q.items.length)) cur.b.push(nb);
+        else { flush(); cur = { id: '', h: [h1, h2], b: [nb] }; }
+        blk = nb;
+      } else if (x.lv >= 4 && blk) blk.items.push({ n: x.n, t: awTitle(x.t), v: '', i: 0 });
+    });
+    flush();
+    // a childless block shares a page only with other childless blocks: split pages where items were added after the merge
+    const out = []; pages.forEach(pg => { let g = null; pg.b.forEach(b => { if (g && !(g.b[0].items.length === 0 && b.items.length === 0)) g = null; if (!g) { g = { id: '', h: pg.h.slice(), b: [] }; out.push(g); } g.b.push(b); }); });
+    out.forEach(pg => { pg.id = 'p' + (++seq); });
+    return { seq, pages: out };
+  }
+  const awOf = i => S.aw[i] || (S.aw[i] = awBuild(i));
+  const awPage = (i, pid) => awOf(i).pages.find(q => q.id === pid);
+  const awName = pg => { const b = pg.b[0]; return (b ? (b.n + ' ' + b.t) : (pg.h[pg.h.length - 1] || '')).slice(0, 44); };
+  function drawAw(st, i, pid) {
+    const P = awPage(i, pid); if (!P) { st.append(E('brs-empty big', 'div', 'ไม่พบหน้านี้')); return; }
+    const L = E('brs-awl', 'div'), key = 'aw' + i + '_' + pid, pp = pics(key);
+    P.h.forEach((t, k) => { if (t) L.append(E('brs-awh h' + k, 'div', subs(t))); });
+    P.b.forEach(b => {
+      L.append(E('brs-awb', 'div', [E('', 'span', b.n), E('', 'span', [subs(b.t), b.tag ? [' ', E('brs-awr', 'span', subs(b.tag))] : null, b.na ? E('brs-awr', 'span', ' - N/A') : null].flat(2))]));
+      if (b.sub) L.append(E('brs-awv bs', 'div', subs(b.sub)));
+      b.items.forEach(it => {
+        const inl = it.i && it.v;
+        L.append(E('brs-awi', 'div', [E('', 'span', it.n), E('', 'span', [subs(it.t), inl ? [' ', E('brs-awr', 'span', subs(it.v))] : null].flat(2))]));
+        if (it.v && !inl) L.append(E('brs-awv', 'div', subs(it.v)));
+      });
+    });
+    const m = D.missions[i], body = E('brs-body awf', 'div', pp ? split(L, pp) : L);
+    st.append(head('8', 'AIRWORK'), E('brs-awsub', 'div', ['8.' + (tsets().indexOf(i) + 2) + ' MISSION PROFILE ', E('brs-awg', 'span', '(' + awTitle(m.name) + ')')]), body);
+  }
+  function edAw(p, i, pid, rd) {
+    const A = awOf(i), P = awPage(i, pid); if (!P) return;
+    const re = () => rd(true);
+    p.append(E('brs-fine', 'p', 'ฟอร์ม AIRWORK ของ ' + tsName(i) + ' — หัวข้อมาจาก Briefing Guide · พิมพ์ _ เพื่อทำตัวห้อย เช่น IP_A · ข้อความที่กรอกในช่อง “ค่า” จะขึ้นเป็นตัวแดงใต้หัวข้อนั้น'));
+    P.h.forEach((t, k) => p.append(field('หัวข้อบรรทัดที่ ' + (k + 1), inp(t, v => { P.h[k] = v; }, '', rd))));
+    P.b.forEach((b, bi) => {
+      const box = E('brs-awe', 'div');
+      box.append(E('brs-row', 'div', [field('ข้อ', inp(b.n, v => { b.n = v; }, 'A.', rd)), field('ชื่อหัวข้อ', inp(b.t, v => { b.t = v; }, '', rd)), field('ป้ายแดง', inp(b.tag, v => { b.tag = v; }, '(IP_A)', rd))]),
+        h('label', { class: 'brs-ck' }, h('input', { type: 'checkbox', checked: b.na ? true : null, onchange: ev => { b.na = ev.target.checked ? 1 : 0; save(); rd(); } }), ' N/A (ขึ้น “- N/A” สีแดง)'),
+        field('บรรทัดแดงใต้หัวข้อ (ถ้ามี) เช่น (Over IP_A Direct TGT_A)', ta(b.sub, v => { b.sub = v; }, '', rd, 2)));
+      b.items.forEach((it, ii) => box.append(E('brs-awit', 'div', [
+        E('brs-row', 'div', [field('ข้อย่อย', inp(it.n, v => { it.n = v; }, '1)', rd)), field('หัวข้อ', inp(it.t, v => { it.t = v; }, '', rd))]),
+        field('ค่า / รายละเอียด (ตัวแดง)', ta(it.v, v => { it.v = v; }, 'เช่น R - 008 / 8.5 From TACAN', rd, 2)),
+        E('brs-row', 'div', [h('label', { class: 'brs-ck' }, h('input', { type: 'checkbox', checked: it.i ? true : null, onchange: ev => { it.i = ev.target.checked ? 1 : 0; save(); rd(); } }), ' ต่อท้ายบรรทัดเดียวกัน'), h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { b.items.splice(ii, 1); save(); re(); } }, 'ลบข้อย่อย')])])));
+      box.append(E('brs-row', 'div', [h('button', { type: 'button', class: 'btn sm', onclick: () => { b.items.push({ n: (b.items.length + 1) + ')', t: '', v: '', i: 0 }); save(); re(); } }, '＋ ข้อย่อย'), h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { P.b.splice(bi, 1); save(); re(); } }, 'ลบหัวข้อนี้')]));
+      p.append(box);
+    });
+    p.append(E('brs-row', 'div', [h('button', { type: 'button', class: 'btn sm', onclick: () => { const n = P.b.length; P.b.push({ n: String.fromCharCode(65 + Math.min(25, n)) + '.', t: '', tag: '', sub: '', na: 0, items: [] }); save(); re(); } }, '＋ หัวข้อ (A. B. C.)')]), picsEd('aw' + i + '_' + pid, rd, 'แนบแผนที่ / ภาพประกอบ ให้แสดงด้านขวา'));
+    const at = A.pages.indexOf(P), idx = id => deck().findIndex(q => q.id === 'aw' + i + '_' + id);
+    const mv = d => { const j = at + d; if (j < 0 || j >= A.pages.length) return; A.pages.splice(j, 0, A.pages.splice(at, 1)[0]); save(); rd(true, idx(pid)); };
+    p.append(E('brs-btns', 'div', [
+      h('button', { type: 'button', class: 'btn sm', title: 'ทำสำเนาหน้านี้ต่อท้าย (เช่น IP_A → IP_B) — รูปไม่ถูกคัดลอก', onclick: () => { const c = JSON.parse(JSON.stringify(P)); c.id = 'p' + (++A.seq); A.pages.splice(at + 1, 0, c); save(); rd(true, idx(c.id)); } }, '⧉ ทำสำเนาหน้านี้'),
+      h('button', { type: 'button', class: 'btn sm', disabled: at === 0 ? true : null, onclick: () => mv(-1) }, '▲ ย้ายขึ้น'), h('button', { type: 'button', class: 'btn sm', disabled: at >= A.pages.length - 1 ? true : null, onclick: () => mv(1) }, '▼ ย้ายลง'),
+      h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { A.pages.splice(at, 1); delete S.img['aw' + i + '_' + pid]; save(); rd(true, Math.max(0, idx((A.pages[Math.min(at, A.pages.length - 1)] || {}).id))); } }, 'ลบหน้านี้'),
+      h('button', { type: 'button', class: 'btn sm ghost', onclick: () => { if (confirm('คืนค่าตั้งต้นของหน้า AIRWORK ทั้งหมดของ ' + tsName(i) + ' ? (ข้อความที่กรอกจะหาย)')) { Object.keys(S.img).forEach(k => { if (k.indexOf('aw' + i + '_') === 0) delete S.img[k]; }); delete S.aw[i]; save(); rd(true, Math.max(0, deck().findIndex(q => q.id.indexOf('aw' + i + '_') === 0))); } } }, 'คืนค่าตั้งต้นทั้งภารกิจ')]));
+  }
+
   /* ---------------- editor widgets ---------------- */
   const field = (lab, ctl) => { if (ctl && /^(INPUT|TEXTAREA|SELECT)$/.test(ctl.tagName)) ctl.setAttribute('aria-label', lab); return E('brs-f', 'div', [E('brs-fl', 'span', lab), ctl]); };
   const inp = (val, set, ph, rd) => nokeys(h('input', { type: 'text', class: 'brs-in', value: val || '', placeholder: ph || '', oninput: ev => { set(ev.target.value); save(); (rd || redrawPrev)(); } }));
@@ -31610,7 +31701,7 @@ const BRIEF_SLIDES = function (C) {
   function drawEd(refresh) {
     const d = DK[S.i]; edBody.replaceChildren(); if (!d) return;
     edBody.append(E('brs-et', 'h3', d.name));
-    const rd = (listToo, idx) => { if (listToo) { if (idx != null) S.i = idx; rebuildList(); drawEd(); } if (d.id === 'title' || /^area|^x\d/.test(d.id) || d.id === 'prim') rebuildListNames(); redrawPrev(); };
+    const rd = (listToo, idx) => { if (listToo) { if (idx != null) S.i = idx; rebuildList(); drawEd(); } if (d.id === 'title' || /^area|^x\d|^aw/.test(d.id) || d.id === 'prim') rebuildListNames(); redrawPrev(); };
     d.ed(edBody, rd);
     edBody.append(E('brs-nav', 'div', [h('button', { type: 'button', class: 'btn sm', disabled: S.i === 0 ? true : null, onclick: () => go(S.i - 1) }, '◀ ก่อนหน้า'), h('button', { type: 'button', class: 'btn sm pri', disabled: S.i >= DK.length - 1 ? true : null, onclick: () => go(S.i + 1) }, 'ถัดไป ▶')]));
   }
