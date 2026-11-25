@@ -31114,7 +31114,7 @@ const BRIEF_SLIDES = function (C) {
     tsets().forEach((i, k) => {                                  // 8. AIRWORK form of each ticked mission (the older outline / picture slides only stay when they were edited)
       if (S.txt['mpt' + i] != null) D0.push(txtSlide(T('mpt' + i, '18', 'MISSION TOPICS', 'M' + (k + 1) + ' ' + tsName(i) + '\n' + tsOutline(i), { hint: 'หัวข้อที่ต้องบรีฟของภารกิจ ' + tsName(i) + ' (จากชุดหัวข้อใน Briefing Guide) — แก้ไข / ตัดบรรทัดได้' })));
       if (S.txt['mps' + i] != null || imgs('mps' + i).length) D0.push(txtSlide(T('mps' + i, '18', 'MISSION PROFILE', '18.' + (k + 1) + ' ' + tsName(i) + '\n  ', { img: 1, hint: 'โปรไฟล์ของภารกิจ ' + tsName(i) })));
-      awOf(i).pages.forEach(pg => D0.push({ id: 'aw' + i + '_' + pg.id, name: '8.' + (k + 2) + ' AIRWORK · ' + tsName(i) + ' · ' + awName(pg), ed: (pp, rd) => edAw(pp, i, pg.id, rd), draw: st => drawAw(st, i, pg.id) }));
+      awOf(i).pages.forEach(pg => D0.push({ id: 'aw' + i + '_' + pg.id, name: (S.awStyle === 'short' ? '8.' + (k + 2) + ' AIRWORK' : '18.1 AIRWORKS') + ' · ' + tsName(i) + ' · ' + awName(pg), ed: (pp, rd) => edAw(pp, i, pg.id, rd), draw: st => drawAw(st, i, pg.id) }));
     });
     more().forEach((m, i) => D0.push(txtSlide(T('mpm' + (i + 1), '18', 'MISSION PROFILE', '18.1 ' + missionShort(m) + '\n  ', { img: 1, hint: 'โปรไฟล์ของภารกิจที่ ' + (i + 2) + ' ในเที่ยวบินนี้' }))));
     ['con1', 'con2', 'rec', 'tpl', 'lem', 'alnd', 'pf', 'ckp', 'aem'].forEach(k => D0.push(txtSlide(TXT[k])));
@@ -31600,11 +31600,11 @@ const BRIEF_SLIDES = function (C) {
   const AW_TAG = [[/^CONTACT POINT/, '(CP_A)'], [/^INITIAL POINT/, '(IP_A)'], [/^TARGETS? AREA/, '(TGT_A)']];
   const subs = s => { const out = []; String(s == null ? '' : s).split(/_([A-Za-z0-9\/]+)/).forEach((t, k) => out.push(k % 2 ? E('', 'sub', t) : t)); return out; };   // IP_A → IP with a subscript A
   function awBuild(i) {                                            // the default pages of a mission, from the guide's outline
-    const its = D.missions[i].items || [], no = '8.' + (tsets().indexOf(i) + 2), pages = []; let h1 = '', h2 = '', s1 = '', cur = null, blk = null, seq = 0;
+    const its = D.missions[i].items || [], pages = []; let h1 = '', h2 = '', s1 = '', cur = null, blk = null, seq = 0;
     const flush = () => { if (cur) pages.push(cur); cur = null; blk = null; };
     its.forEach(x => {
-      if (x.lv === 1) { flush(); s1 = x.n; h1 = no + '.' + x.n + ' ' + awTitle(x.t); h2 = ''; }
-      else if (x.lv === 2) { flush(); h2 = no + '.' + s1 + '.' + String(x.n).split('.').pop() + ' ' + awTitle(x.t); }
+      if (x.lv === 1) { flush(); s1 = x.n; h1 = x.n + ' ' + awTitle(x.t); h2 = ''; }
+      else if (x.lv === 2) { flush(); h2 = s1 + '.' + String(x.n).split('.').pop() + ' ' + awTitle(x.t); }
       else if (x.lv === 3) {
         const tag = (AW_TAG.find(q => q[0].test(x.t.toUpperCase())) || [0, ''])[1];
         const nb = { n: x.n + '.', t: awTitle(x.t), tag, sub: '', na: 0, items: [] };
@@ -31617,15 +31617,17 @@ const BRIEF_SLIDES = function (C) {
     // a childless block shares a page only with other childless blocks: split pages where items were added after the merge
     const out = []; pages.forEach(pg => { let g = null; pg.b.forEach(b => { if (g && !(g.b[0].items.length === 0 && b.items.length === 0)) g = null; if (!g) { g = { id: '', h: pg.h.slice(), b: [] }; out.push(g); } g.b.push(b); }); });
     out.forEach(pg => { pg.id = 'p' + (++seq); });
-    return { seq, pages: out };
+    return { v: 2, seq, pages: out };
   }
-  const awOf = i => S.aw[i] || (S.aw[i] = awBuild(i));
+  const awNo = i => (S.awStyle === 'short' ? '8.' + (tsets().indexOf(i) + 2) : '18.1');   // standard deck: 18. MISSION PROFILE › 18.1 AIRWORKS · Short Briefing numbering: 8. AIRWORK › 8.2 MISSION PROFILE
+  const awOf = i => { const A = S.aw[i] || (S.aw[i] = awBuild(i)); if (!A.v) { A.v = 2; A.pages.forEach(pg => { pg.h = pg.h.map(t => String(t).replace(/^8\.\d+\./, '')); }); } return A; };
+  const awHead = (i, t) => (/^\d/.test(t) ? awNo(i) + '.' + t : t);
   const awPage = (i, pid) => awOf(i).pages.find(q => q.id === pid);
   const awName = pg => { const b = pg.b[0]; return (b ? (b.n + ' ' + b.t) : (pg.h[pg.h.length - 1] || '')).slice(0, 44); };
   function drawAw(st, i, pid) {
     const P = awPage(i, pid); if (!P) { st.append(E('brs-empty big', 'div', 'ไม่พบหน้านี้')); return; }
     const L = E('brs-awl', 'div'), key = 'aw' + i + '_' + pid, pp = pics(key);
-    P.h.forEach((t, k) => { if (t) L.append(E('brs-awh h' + k, 'div', subs(t))); });
+    P.h.forEach((t, k) => { if (t) L.append(E('brs-awh h' + k, 'div', subs(awHead(i, t)))); });
     P.b.forEach(b => {
       L.append(E('brs-awb', 'div', [E('', 'span', b.n), E('', 'span', [subs(b.t), b.tag ? [' ', E('brs-awr', 'span', subs(b.tag))] : null, b.na ? E('brs-awr', 'span', ' - N/A') : null].flat(2))]));
       if (b.sub) L.append(E('brs-awv bs', 'div', subs(b.sub)));
@@ -31636,13 +31638,15 @@ const BRIEF_SLIDES = function (C) {
       });
     });
     const m = D.missions[i], body = E('brs-body awf', 'div', pp ? split(L, pp) : L);
-    st.append(head('8', 'AIRWORK'), E('brs-awsub', 'div', ['8.' + (tsets().indexOf(i) + 2) + ' MISSION PROFILE ', E('brs-awg', 'span', '(' + awTitle(m.name) + ')')]), body);
+    const sh = S.awStyle === 'short';
+    st.append(sh ? head('8', 'AIRWORK') : head('18', 'MISSION PROFILE'), E('brs-awsub', 'div', [awNo(i) + (sh ? ' MISSION PROFILE ' : ' AIRWORKS ') , E('brs-awg', 'span', '(' + awTitle(m.name) + ')')]), body);
   }
   function edAw(p, i, pid, rd) {
     const A = awOf(i), P = awPage(i, pid); if (!P) return;
     const re = () => rd(true);
-    p.append(E('brs-fine', 'p', 'ฟอร์ม AIRWORK ของ ' + tsName(i) + ' — หัวข้อมาจาก Briefing Guide · พิมพ์ _ เพื่อทำตัวห้อย เช่น IP_A · ข้อความที่กรอกในช่อง “ค่า” จะขึ้นเป็นตัวแดงใต้หัวข้อนั้น'));
-    P.h.forEach((t, k) => p.append(field('หัวข้อบรรทัดที่ ' + (k + 1), inp(t, v => { P.h[k] = v; }, '', rd))));
+    p.append(E('brs-fine', 'p', 'ฟอร์ม AIRWORKS ของ ' + tsName(i) + ' — หัวข้อมาจาก Briefing Guide · พิมพ์ _ เพื่อทำตัวห้อย เช่น IP_A · ข้อความที่กรอกในช่อง “ค่า” จะขึ้นเป็นตัวแดงใต้หัวข้อนั้น'));
+    p.append(field('เลขข้อของสไลด์', h('select', { class: 'brs-in sm', onchange: ev => { S.awStyle = ev.target.value; save(); rd(true); } }, h('option', { value: 'std', selected: S.awStyle !== 'short' ? true : null }, 'แบบมาตรฐาน — 18. MISSION PROFILE › 18.1 AIRWORKS'), h('option', { value: 'short', selected: S.awStyle === 'short' ? true : null }, 'แบบ Short Briefing — 8. AIRWORK › 8.2 MISSION PROFILE'))));
+    P.h.forEach((t, k) => p.append(field('หัวข้อบรรทัดที่ ' + (k + 1) + ' (เลขนำหน้าเติมให้เอง)', inp(t, v => { P.h[k] = v; }, '', rd))));
     P.b.forEach((b, bi) => {
       const box = E('brs-awe', 'div');
       box.append(E('brs-row', 'div', [field('ข้อ', inp(b.n, v => { b.n = v; }, 'A.', rd)), field('ชื่อหัวข้อ', inp(b.t, v => { b.t = v; }, '', rd)), field('ป้ายแดง', inp(b.tag, v => { b.tag = v; }, '(IP_A)', rd))]),
