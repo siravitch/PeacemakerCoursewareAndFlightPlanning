@@ -31674,15 +31674,7 @@ const BRIEF_SLIDES = function (C) {
   const inp = (val, set, ph, rd) => nokeys(h('input', { type: 'text', class: 'brs-in', value: val || '', placeholder: ph || '', oninput: ev => { set(ev.target.value); save(); (rd || redrawPrev)(); } }));
   const taFit = t => { t.style.height = 'auto'; t.style.height = Math.min(360, Math.max(60, t.scrollHeight + 2)) + 'px'; };
   const ta = (val, set, ph, rd, rows) => { const t = nokeys(h('textarea', { class: 'brs-in', rows: rows || 4, placeholder: ph || '', oninput: ev => { set(ev.target.value); save(); taFit(ev.target); (rd || redrawPrev)(); } })); t.value = val || ''; setTimeout(() => taFit(t), 0); return t; };
-  function picsEd(k, rd, hint) {
-    const box = E('brs-pe'), draw = () => {
-      box.replaceChildren(E('brs-fl', 'span', 'รูปภาพประกอบ' + (hint ? ' — ' + hint : '')));
-      const row = E('brs-thumbs'); imgs(k).forEach((u, i) => row.append(E('brs-th', 'div', [h('img', { src: u, alt: '' }), h('button', { type: 'button', 'aria-label': 'ลบรูป', onclick: () => { imgs(k).splice(i, 1); save(); draw(); rd(); } }, '✕')]))); box.append(row);
-      const f = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, onchange: ev => { const L = [].slice.call(ev.target.files).slice(0, 6 - imgs(k).length); let n = L.length; L.forEach(fl => readImg(fl, u => { imgs(k).push(u); if (--n === 0) { save(); draw(); rd(); } })); ev.target.value = ''; } });
-      box.append(f, h('button', { type: 'button', class: 'btn sm', disabled: imgs(k).length >= 6 ? true : null, onclick: () => f.click() }, '＋ แนบรูป (สูงสุด 6)'));
-    };
-    draw(); return box;
-  }
+  function picsEd(k, rd, hint) { return dropPics(k, rd, 6, 'รูปภาพประกอบ' + (hint ? ' — ' + hint : '')); }   // every picture field: drag & drop, click to choose, or Ctrl+V (see dropPics)
 
   /* ---------------- editor + preview ---------------- */
   let host = null, prevEl = null, edBody = null, listEl = null, DK = [];
