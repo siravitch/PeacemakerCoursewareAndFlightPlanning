@@ -30981,12 +30981,14 @@ const BRIEF_SLIDES = function (C) {
   const A = rk => { if (!X) X = collect(); const m = mInfoSel(); try { return auto(rk, X, m); } catch (e) { return null; } };
   const mInfoSel = () => { for (const i of tsets()) { if (C.mpull && !C.mpull('m:' + i)) continue; const t = mInfo(D.missions[i])[1]; if (t && typeof MODS !== 'undefined' && MODS[t]) return MODS[t]; } return null; };   // module of the first ticked topic set that has one
   const fromLines = l => (l && l.length ? l.join(' · ') : '');
+  /* special missions that have no objective table in the Briefing Guide: use the requirement list of the training sortie of the same name (รปป. ผนวก ก) — the ticked sortie first, else the first one found */
+  const SORT_OF = { 'TOWING': 'ลากแผ่นผ้า', 'LEAFLET': 'ใบปลิว', 'COLORED SMOKE': 'ควันสี', 'AIR DELIVERY': 'ส่งทางอากาศ' };
   const reqOf = (p, own) => {                                       // {title, lines[]} of the objective of a mission; own = the typed requirement of a free-text mission
     if (!p || p.k === 'na') return null;
     if (p.k === 'tx') return { title: p.t || '', lines: String(own != null ? own : S.objTxt || '').split('\n').filter(Boolean) };
     if (p.k.indexOf('tr:') === 0) { const t = TRAIN.find(q => q.k === p.k); let n = 0; return { title: t.en + '  ' + t.th + '   ' + t.ref, lines: ['ผู้รับการฝึกจะได้รับการฝึกและปฏิบัติในเรื่อง'].concat(t.req.map(r => /^ /.test(r) ? r : (++n, thn(n) + '. ' + r))) }; }
     if (p.k.indexOf('gd:') === 0) { const g = GDS.find(q => q[0] === p.k); return { title: g[1] + ' · ' + g[2], lines: [] }; }
-    if (p.k.indexOf('sp:') === 0) { const m = D.missions[+p.k.slice(3)], id = m && mInfo(m)[2], Tb = (D.obj || []).find(q => q.id === id); if (!Tb) return { title: m ? m.name.replace(/ BRIEFING$/, '') + ' · ' + mInfo(m)[0] : '', lines: [] }; const col = S.objMode === 'check' ? 2 : 1; return { title: Tb.name + ' — ' + (col === 2 ? 'สำหรับการตรวจสอบ' : 'สำหรับการฝึก'), lines: Tb.rows.map(r => r[0] + '   ' + r[col]) }; }
+    if (p.k.indexOf('sp:') === 0) { const m = D.missions[+p.k.slice(3)], id = m && mInfo(m)[2], Tb = (D.obj || []).find(q => q.id === id); if (!Tb) { const kw = m && Object.keys(SORT_OF).find(q => m.name.toUpperCase().startsWith(q)), pk = kw && [S.prim].concat(more()).filter(x => x && x.k && x.k.indexOf('tr:') === 0).map(x => TRAIN.find(q => q.k === x.k)).filter(Boolean), t = kw && (pk.find(q => q.th.indexOf(SORT_OF[kw]) >= 0) || TRAIN.find(q => q.th.indexOf(SORT_OF[kw]) >= 0 && q.req.length)); if (t) return reqOf({ k: t.k }); return { title: m ? m.name.replace(/ BRIEFING$/, '') + ' · ' + mInfo(m)[0] : '', lines: [] }; } const col = S.objMode === 'check' ? 2 : 1; return { title: Tb.name + ' — ' + (col === 2 ? 'สำหรับการตรวจสอบ' : 'สำหรับการฝึก'), lines: Tb.rows.map(r => r[0] + '   ' + r[col]) }; }
     return null;
   };
   const parseMin = s => { const m = /(?:(\d+)h)?\s*(\d+)m\s*(\d+)s/.exec(String(s || '')); return m ? (+(m[1] || 0)) * 60 + (+m[2]) + (+m[3]) / 60 : NaN; };
@@ -31217,7 +31219,7 @@ const BRIEF_SLIDES = function (C) {
     st.append(head('4', 'MISSION DESCRIPTION'), body);
   }
   function edObjSet(p, idx, rd) {
-    p.append(E('brs-fine', 'p', 'Objective ของภารกิจ ' + tsName(idx) + ' — ชุดหัวข้อที่ติ๊กไว้ในขั้นที่ 1 (ตาราง Mission Objective ของ Briefing Guide)'),
+    p.append(E('brs-fine', 'p', 'Objective ของภารกิจ ' + tsName(idx) + ' — ชุดหัวข้อที่ติ๊กไว้ในขั้นที่ 1 (ตาราง Mission Objective ของ Briefing Guide; ภารกิจที่คู่มือไม่มีตาราง เช่น TOWING / LEAFLET / COLORED SMOKE / AIR DELIVERY ใช้รายการ Requirement ของเที่ยวบินชื่อเดียวกันใน รปป. เช่น ฝพ.๒๔)'),
       field('ตารางภารกิจพิเศษ', h('select', { class: 'brs-in sm', onchange: ev => { S.objMode = ev.target.value; save(); rd(); } }, h('option', { value: 'train', selected: S.objMode !== 'check' }, 'สำหรับการฝึก'), h('option', { value: 'check', selected: S.objMode === 'check' }, 'สำหรับการตรวจสอบ'))),
       picsEd('objs' + idx, rd, 'แนบภาพตารางหลักสูตร (สแกน/ภาพถ่าย) ให้แสดงข้าง Requirement'));
   }
